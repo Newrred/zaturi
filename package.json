@@ -4,12 +4,22 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
+    "start:dev-client": "expo start --dev-client",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "check:deps": "expo install --check",
+    "eas:login": "npx eas-cli@latest login",
+    "eas:whoami": "npx eas-cli@latest whoami",
+    "build:android:dev": "npx eas-cli@latest build --profile development --platform android",
+    "build:ios:dev": "npx eas-cli@latest build --profile development --platform ios",
+    "build:android": "npx eas-cli@latest build --profile production --platform android",
+    "build:ios": "npx eas-cli@latest build --profile production --platform ios"
   },
   "dependencies": {
     "expo": "~54.0.33",
+    "expo-dev-client": "~6.0.21",
     "expo-status-bar": "~3.0.9",
     "react": "19.1.0",
     "react-native": "0.81.5"
@@ -17,6 +27,9 @@
   "devDependencies": {
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "private": true
 }
