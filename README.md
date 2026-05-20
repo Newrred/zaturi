@@ -9,6 +9,39 @@ Expo + React Native + TypeScript app scaffolded for Android and iOS development 
 - Android Studio for Android emulator/device builds.
 - macOS with Xcode for local iOS simulator/native builds. Windows can still create iOS cloud builds through EAS.
 
+## Product Direction
+
+This app is being built as `자투리여행`, a route-based tourism curation service that turns spare time during Gangwon car travel into short, realistic stopover experiences.
+
+- [Project brief](docs/PROJECT_BRIEF.md)
+- [Product flow](docs/PRODUCT_FLOW.md)
+- [Current direction](docs/CURRENT_DIRECTION.md)
+- [Development structure](docs/DEVELOPMENT_STRUCTURE.md)
+- [Codex workflow](docs/CODEX_WORKFLOW.md)
+- [Development tooling](docs/DEVELOPMENT_TOOLING.md)
+- [Kakao API proxy](docs/KAKAO_PROXY.md)
+- [TourAPI integration](docs/TOUR_API_INTEGRATION.md)
+- [Recommendation policy](docs/RECOMMENDATION_POLICY.md)
+- [APK test build](docs/APK_TEST_BUILD.md)
+
+## Project Workflow
+
+For meaningful code, config, or product-direction changes, create a handoff log:
+
+```powershell
+npm run log:new -- "short work title"
+```
+
+Then fill in the generated file under `work_logs/`.
+
+Useful local quality/tooling checks:
+
+```powershell
+npm run typecheck
+npm run check:react
+npm run maestro:version
+```
+
 ## Windows Android setup
 
 On this desktop, the user environment variables were set for Android CLI work. Reopen PowerShell or VS Code terminals after setup so new shells inherit them.
@@ -42,7 +75,20 @@ Useful commands:
 - `npm run ios` starts Expo and opens iOS. This requires macOS/Xcode for the simulator.
 - `npm run start:dev-client` starts Metro for an installed Expo development build.
 - `npm run web` starts the web target.
+- `npm run proxy:kakao` starts the local Kakao API proxy.
 - `npm run check:deps` checks Expo SDK-compatible dependency versions.
+
+## Kakao API proxy
+
+Real Kakao Local and Kakao Mobility calls require a Kakao REST API key. Keep it server-side:
+
+```powershell
+copy .env.example .env
+# Fill KAKAO_REST_API_KEY in .env or .env.proxy.local
+npm run proxy:kakao
+```
+
+The Expo app reads `EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL` and falls back to mock route math when the proxy or key is unavailable.
 
 ## EAS development builds
 

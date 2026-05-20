@@ -15,7 +15,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.zaturi.app"
+      "bundleIdentifier": "com.zaturi.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "현재 이동 경로 주변의 자투리 여행지를 추천하기 위해 위치를 사용합니다."
+      }
     },
     "android": {
       "package": "com.zaturi.app",
@@ -27,13 +30,24 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "experiments": {
+      "typedRoutes": true
     },
     "plugins": [
       [
         "expo-dev-client",
         {
           "launchMode": "most-recent"
+        }
+      ],
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "현재 이동 경로 주변의 자투리 여행지를 추천하기 위해 위치를 사용합니다."
         }
       ]
     ]

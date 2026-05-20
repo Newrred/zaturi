@@ -1,0 +1,5 @@
+appId: com.zaturi.app
+---
+- launchApp
+- assertVisible: "자투리여행"
+- assertVisible: "추천 보기"

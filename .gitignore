@@ -25,6 +25,8 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+.playwright-mcp/
+zaturi-mvp-*.png
 
 # macOS
 .DS_Store

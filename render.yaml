@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: zaturi-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm run start:proxy
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.20.1
+      - key: KAKAO_REST_API_KEY
+        sync: false
+      - key: TOUR_API_SERVICE_KEY
+        sync: false
+      - key: KAKAO_ROUTE_CANDIDATE_CORRIDOR_METERS
+        value: 20000
+      - key: KAKAO_ROUTE_WAYPOINT_CANDIDATE_LIMIT
+        value: 8
+      - key: KAKAO_ROUTE_WAYPOINT_CONCURRENCY
+        value: 3
+      - key: TOUR_API_ROUTE_SAMPLE_LIMIT
+        value: 6
+      - key: TOUR_API_CANDIDATE_LIMIT
+        value: 40
+      - key: TOUR_API_SEARCH_RADIUS_METERS
+        value: 12000

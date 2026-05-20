@@ -1,0 +1,143 @@
+# Development Structure
+
+This document describes how the project should be organized as it grows. It is a guide, not a fixed contract.
+
+## Current State
+
+The project now uses Expo Router and a small MVP app structure:
+
+```text
+app/
+  _layout.tsx
+  index.tsx
+  recommendations.tsx
+  spot/[id].tsx
+  saved.tsx
+  settings.tsx
+src/
+  components/
+  constants/
+  data/
+  domain/
+  store/
+  types/
+  utils/
+app.json
+eas.json
+assets/
+docs/
+maestro/
+server/
+  kakao-proxy.mjs
+  recommendation/
+work_logs/
+tools/
+```
+
+## Target App Structure
+
+As feature work continues, keep this structure clear:
+
+```text
+app/
+  _layout.tsx
+  index.tsx
+  recommendations.tsx
+  spot/[id].tsx
+  saved.tsx
+  settings.tsx
+
+src/
+  components/
+    recommendation/
+    layout/
+    form/
+  constants/
+    colors.ts
+    spacing.ts
+  data/
+    destinations.ts
+    mockSpots.ts
+  domain/
+    recommendation/
+      types.ts
+      schema.ts
+      scoring.ts
+      bundle.ts
+      recommend.ts
+    routing/
+      types.ts
+      kakaoRoutePlanner.ts
+  services/
+    routeProxy/
+      client.ts
+    tourApi/
+      client.ts
+      mapper.ts
+  hooks/
+  utils/
+  types/
+server/
+  kakao-proxy.mjs
+  recommendation/
+    tour-candidate-policy.mjs
+```
+
+The exact structure can change, but keep these boundaries clear:
+
+- `app/`: route files and screen composition.
+- `src/components/`: reusable UI pieces.
+- `src/domain/`: product logic such as recommendation models and scoring.
+- `src/services/`: external API clients and response mapping.
+- `src/data/`: mock or seed data used for prototyping.
+- `src/constants/`: colors, spacing, labels, and stable UI values.
+- `server/`: local backend proxy code for secret-bearing public API calls.
+- `server/recommendation/`: server-side candidate selection policy that should stay separate from API plumbing.
+
+## Data Model Direction
+
+Core model candidates:
+
+- `TravelSpot`: a normalized tourism spot.
+- `RecommendationInput`: current route, spare time, companion type, and filters.
+- `RecommendationBundle`: one comparable waypoint route card, usually `origin -> spot -> destination`.
+- `RouteSummary`: normalized baseline or waypoint route data.
+- `SpotRouteAssessment`: added driving time, route corridor distance, and confidence for one candidate.
+- `AccessibilityInfo`: parking, wheelchair access, stroller friendliness, walking burden.
+- `WeatherContext`: simple weather condition used for filtering or explanation.
+
+Do not let raw external API shapes leak into UI components. Map TourAPI, Kakao Mobility, or other public data into app-owned types first.
+
+Kakao REST API keys must not be stored directly in the Expo client. Use `server/kakao-proxy.mjs` for local live Kakao Local and Kakao Mobility calls, then return normalized route models to the app.
+
+TourAPI raw items should not flow directly into screens. Route them through `server/recommendation/tour-candidate-policy.mjs`, then send app-owned `TravelSpot` data and policy reasons to the client.
+
+## UI Direction
+
+- Start with practical mobile screens rather than a marketing landing page.
+- Recommendation cards should be scannable and action-oriented.
+- Show baseline drive time, waypoint drive time, added driving minutes, recommendation reason, and navigation action clearly.
+- Keep Korean product language natural and short.
+- Use real tourism/place imagery when possible, but mock assets are acceptable during early prototyping.
+
+## Verification
+
+For normal code changes:
+
+```powershell
+npm run typecheck
+```
+
+After Expo or React Native dependency changes:
+
+```powershell
+npm run check:deps
+npx expo-doctor@latest
+```
+
+For UI changes, run the app on at least one target:
+
+```powershell
+npm start
+npm run android
+```
