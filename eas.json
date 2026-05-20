@@ -11,6 +11,9 @@
     "preview": {
       "distribution": "internal",
       "environment": "preview",
+      "env": {
+        "EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL": "https://zaturi.onrender.com"
+      },
       "android": {
         "buildType": "apk"
       }

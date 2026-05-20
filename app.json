@@ -27,7 +27,11 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -50,6 +54,12 @@
           "locationWhenInUsePermission": "현재 이동 경로 주변의 자투리 여행지를 추천하기 위해 위치를 사용합니다."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "b3786861-8f38-4b58-b544-c0606a38b95b"
+      }
+    }
   }
 }

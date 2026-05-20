@@ -34,11 +34,17 @@ Do not put Kakao or TourAPI keys in any `EXPO_PUBLIC_` variable.
 Invoke-RestMethod -Uri "https://your-public-proxy.example.com/health"
 ```
 
-3. Add the public API URL to the EAS `preview` environment:
+3. Make sure the public API URL is set for the EAS `preview` profile.
 
-```powershell
-npx eas-cli@latest env:create --environment preview --visibility plaintext --name EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL --value "https://your-public-proxy.example.com"
+This project currently stores the public proxy URL directly in `eas.json` because it is not a secret:
+
+```json
+"env": {
+  "EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL": "https://zaturi.onrender.com"
+}
 ```
+
+If the URL changes later, update the `preview.env` value before building.
 
 4. Build the production-like tester APK without dev tools:
 
@@ -122,3 +128,39 @@ Then test the same proxy URL that will be baked into the APK.
 ## If You Build Before Deploying The Proxy
 
 The APK can still run, but live Kakao/TourAPI data will not work for another tester unless their device can reach the configured proxy URL. With the current local URL, another phone will usually fall back to mock route behavior.
+
+## Troubleshooting
+
+### `/health` returns `Not Found`
+
+This usually means Render is not running the proxy server.
+
+Check the Render service settings:
+
+```text
+Build Command: npm ci
+Start Command: node server/kakao-proxy.mjs
+```
+
+`node expo-router/entry` is wrong for the proxy. That starts the Expo app entry, not the API proxy.
+
+After changing the command, click:
+
+```text
+Manual Deploy -> Clear build cache & deploy
+```
+
+In Render logs, a correct proxy boot should show:
+
+```text
+Kakao proxy listening on port ...
+Kakao REST API key loaded.
+TourAPI service key loaded.
+```
+
+If `/health` works but `hasKakaoRestApiKey` or `hasTourApiServiceKey` is `false`, the service is running but the environment variable names are wrong or empty. They must be exactly:
+
+```text
+KAKAO_REST_API_KEY
+TOUR_API_SERVICE_KEY
+```
