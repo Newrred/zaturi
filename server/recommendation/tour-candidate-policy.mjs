@@ -153,6 +153,20 @@ function isGangwonAddress(address) {
   return text.includes('강원');
 }
 
+function normalizeRemoteImageUrl(value) {
+  const url = String(value ?? '').trim();
+
+  if (!url) {
+    return '';
+  }
+
+  if (url.startsWith('http://')) {
+    return `https://${url.slice('http://'.length)}`;
+  }
+
+  return url;
+}
+
 function evaluateTourApiItem(item) {
   const contentTypeId = String(item.contenttypeid ?? '12');
   const profile = contentTypeProfiles[contentTypeId] ?? contentTypeProfiles['12'];
@@ -206,6 +220,10 @@ export function mapTourApiItemToTravelSpot(item) {
   const evaluation = evaluateTourApiItem(item);
   const address = [item.addr1, item.addr2].filter(Boolean).join(' ');
   const indoor = evaluation.profile.indoor;
+  const imageUrl =
+    normalizeRemoteImageUrl(item.firstimage) ||
+    normalizeRemoteImageUrl(item.firstimage2) ||
+    'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80';
 
   return {
     id: `tour-${item.contentid}`,
@@ -214,10 +232,7 @@ export function mapTourApiItemToTravelSpot(item) {
     address: address || '주소 정보 확인 필요',
     area: areaFromAddress(address),
     coordinate: { latitude, longitude },
-    imageUrl:
-      item.firstimage ||
-      item.firstimage2 ||
-      'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
+    imageUrl,
     summary: `TourAPI 위치기반 관광정보로 가져온 후보입니다. ${evaluation.reasons[0]}`,
     sourceLabel: 'TourAPI 위치기반 관광정보',
     officialTags: evaluation.tags,

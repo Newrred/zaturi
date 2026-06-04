@@ -2,6 +2,7 @@ package expo.modules.zaturikakaomap
 
 import android.content.Context
 import android.graphics.Color
+import android.os.Build
 import android.view.Gravity
 import android.view.View
 import android.widget.TextView
@@ -49,6 +50,7 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
       textSize = 13f
       setPadding(32, 24, 32, 24)
       text = "Kakao Native App Key is required."
+      visibility = View.GONE
     }
     addView(messageView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
   }
@@ -93,6 +95,13 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
     }
 
     try {
+      if (!isKakaoNativeAbiSupported()) {
+        failMap(
+          "UNSUPPORTED_ABI",
+          "Kakao Maps SDK native library is not available for this Android emulator ABI (${Build.SUPPORTED_ABIS.joinToString()})."
+        )
+        return
+      }
       if (!KakaoMapSdk.isInitialized()) {
         KakaoMapSdk.init(context.applicationContext, appKey)
       }
@@ -126,6 +135,9 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
           }
         }
       )
+    } catch (error: LinkageError) {
+      startRequested = false
+      failMap("NATIVE_LIBRARY_ERROR", error.message ?: "Kakao map native library failed to load.")
     } catch (error: Exception) {
       startRequested = false
       failMap("MAP_INIT_ERROR", error.message ?: "Kakao map failed to initialize.")
@@ -136,7 +148,7 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
     disposed = true
     kakaoMap = null
     pinLabel = null
-    if (mapView.isStarted) {
+    if (startRequested && mapView.isStarted) {
       mapView.finish()
     }
   }
@@ -190,6 +202,12 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
         .setStyles(styles)
         .setTexts(labelText)
     )
+  }
+
+  private fun isKakaoNativeAbiSupported(): Boolean {
+    val primaryAbi = Build.SUPPORTED_ABIS.firstOrNull().orEmpty()
+
+    return primaryAbi == "arm64-v8a" || primaryAbi == "armeabi-v7a"
   }
 
   private fun showMessage(message: String) {

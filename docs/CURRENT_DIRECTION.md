@@ -25,6 +25,7 @@ Build `자투리여행`: a route-based tourism curation app that helps car trave
 - Show recommendation cards as comparable route bundles with a visual mini route comparison between the baseline route and the waypoint route.
 - Use Kakao Maps Native SDK for the Android spot-location preview when `EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY` is configured.
 - If the Android Kakao map fails to load, fall back to the OSM preview and surface a diagnostic warning instead of leaving a blank map.
+- Android x86_64 emulators should use the OSM fallback because the Kakao Maps SDK native library in the current build is ARM-only; verify the Kakao native map on an ARM Android device.
 - Keep OpenStreetMap embed/WebView as the iOS/web fallback and as an Android fallback when the Kakao native key is missing.
 - Use the installed development tooling selectively: Context7 for fresh docs, React Doctor for advisory React diagnostics, and Maestro for E2E flows after a dev build exists.
 

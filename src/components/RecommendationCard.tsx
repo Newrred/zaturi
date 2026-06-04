@@ -5,6 +5,7 @@ import { RouteMiniMap } from '@/components/RouteMiniMap';
 import { Badge, Card } from '@/components/ui';
 import { colors, radius, spacing } from '@/constants/theme';
 import type { RecommendationBundle } from '@/domain/recommendation/types';
+import { normalizeRemoteMediaUrl } from '@/utils/mediaUrl';
 
 function formatKm(meters: number) {
   return (meters / 1000).toFixed(meters >= 100_000 ? 0 : 1);
@@ -20,7 +21,7 @@ export function RecommendationCard({ bundle, onPress }: { bundle: Recommendation
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
       <Card>
         <View style={styles.image}>
-          <Image source={{ uri: spot.imageUrl }} style={styles.imagePhoto} contentFit="cover" />
+          <Image source={{ uri: normalizeRemoteMediaUrl(spot.imageUrl) }} style={styles.imagePhoto} contentFit="cover" />
           <View style={styles.imageShade}>
             <Badge label={bundle.routeFitLabel} tone={bundle.detourMinutes <= 10 ? 'green' : 'amber'} />
           </View>

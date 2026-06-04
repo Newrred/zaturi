@@ -7,6 +7,7 @@ import { Badge, Card, EmptyState, PrimaryButton, Screen, SecondaryButton, Sectio
 import { colors, radius, spacing } from '@/constants/theme';
 import { getSpotById } from '@/domain/recommendation/recommend';
 import { useTripStore } from '@/store/useTripStore';
+import { normalizeRemoteMediaUrl } from '@/utils/mediaUrl';
 import { openWaypointNavigation } from '@/utils/navigation';
 
 export default function SpotDetailScreen() {
@@ -48,7 +49,7 @@ export default function SpotDetailScreen() {
       }
     >
       <View style={styles.heroImage}>
-        <Image source={{ uri: spot.imageUrl }} style={styles.heroPhoto} contentFit="cover" />
+        <Image source={{ uri: normalizeRemoteMediaUrl(spot.imageUrl) }} style={styles.heroPhoto} contentFit="cover" />
         <View style={styles.heroShade}>
           <Badge label={spot.sourceLabel} tone="blue" />
         </View>
