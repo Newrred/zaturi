@@ -62,6 +62,15 @@ Health:
 GET /health
 ```
 
+App place search:
+
+```text
+GET /api/places/search?query=서울역&role=origin
+GET /api/places/search?query=강릉역&role=destination
+```
+
+This endpoint normalizes TourAPI keyword search and optional VWorld address search into app-owned place results. It is the endpoint used by the home screen search fields.
+
 Kakao Local:
 
 ```text

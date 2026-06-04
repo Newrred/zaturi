@@ -53,6 +53,16 @@
         {
           "locationWhenInUsePermission": "현재 이동 경로 주변의 자투리 여행지를 추천하기 위해 위치를 사용합니다."
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "extraMavenRepos": [
+              "https://devrepo.kakao.com/nexus/repository/kakaomap-releases/"
+            ]
+          }
+        }
       ]
     ],
     "extra": {

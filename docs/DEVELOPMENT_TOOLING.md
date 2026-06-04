@@ -1,6 +1,6 @@
 # Development Tooling
 
-Last updated: 2026-05-19
+Last updated: 2026-06-04
 
 This document records installed or researched development tools that can improve the Codex-assisted workflow for this Expo + React Native app.
 
@@ -106,6 +106,40 @@ Source:
 
 - https://github.com/millionco/react-doctor
 
+### Route Preview Libraries
+
+Purpose: supports the current free MVP map and route comparison layer.
+
+Installed project dependencies:
+
+- `react-native-svg`: draws the recommendation-card route comparison without map tiles.
+- `react-native-webview`: renders the OpenStreetMap single-pin embed on native builds.
+- `expo-build-properties`: adds the Kakao Maps Maven repository during Android prebuild/EAS native builds.
+
+Notes:
+
+- Both were installed with `npx expo install` for Expo SDK 54 compatibility.
+- OpenStreetMap embed/tile usage is suitable for prototype validation, but production traffic should be reviewed against provider policy or moved to VWorld/Kakao/commercial/self-hosted tiles.
+
+### Kakao Maps Native SDK
+
+Purpose: renders a native Kakao map in Android spot detail screens.
+
+Current implementation:
+
+- Local Expo native module: `modules/zaturi-kakao-map`.
+- Android SDK dependency: `com.kakao.maps.open:android:2.13.2`.
+- Maven repository: `https://devrepo.kakao.com/nexus/repository/kakaomap-releases/`.
+- App-side key variable: `EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY`.
+- Android component: `src/components/SpotMap.android.tsx`.
+
+Notes:
+
+- This cannot be tested in Expo Go because it contains custom native code. Use an Expo dev build or EAS preview APK.
+- The key must be Kakao's Native App Key, not the REST API key used by `server/kakao-proxy.mjs`.
+- Kakao Developers must include the Android package name `com.zaturi.app` and the matching debug/release key hash.
+- iOS is intentionally left on the existing OSM fallback until a Swift bridge is added for the Kakao iOS SDK.
+
 ## Useful Permissive OSS Candidates
 
 These are not installed yet. Add them only when the app reaches the related implementation step.
@@ -125,6 +159,8 @@ These are not installed yet. Add them only when the app reaches the related impl
 | `@shopify/flash-list` | MIT | Fast recommendation/result lists | Use when lists become large |
 | `@gorhom/bottom-sheet` | MIT | Map/detail bottom sheet UI pattern | Use when map/result UI starts |
 | `react-native-maps` | MIT | Native map display | Useful, but map provider terms/API keys still matter |
+| `react-native-svg` | MIT | Route mini-map drawing without tile APIs | Installed for route comparison cards |
+| `react-native-webview` | MIT | Native OSM/VWorld/Leaflet-style embedded map preview | Installed for free spot pin preview |
 | `expo-sqlite` | MIT | Local cached tourism data or offline prototype storage | Consider after data volume grows |
 | `expo-secure-store` | MIT | Sensitive tokens if login/API proxy auth appears | Use only if needed |
 | `date-fns` | MIT | Time windows, operating hours, simple date formatting | Good utility candidate |
@@ -140,4 +176,3 @@ License note: package license fields were checked through npm metadata. Provider
 5. `expo-location` and `expo-linking` when location/navigation handoff starts.
 6. `@turf/turf` or `geolib` when route proximity logic begins.
 7. `react-native-maps`, bottom sheets, and list optimization after the core recommendation flow is visible.
-

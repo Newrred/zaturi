@@ -6,7 +6,6 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { RecommendationCard } from '@/components/RecommendationCard';
 import { Badge, Card, EmptyState, Screen, SecondaryButton, Section } from '@/components/ui';
 import { colors, spacing } from '@/constants/theme';
-import { destinationPresets } from '@/data/destinations';
 import { getRecommendationResult } from '@/domain/recommendation/recommend';
 import { useTripStore } from '@/store/useTripStore';
 
@@ -17,6 +16,8 @@ function formatKm(meters: number) {
 export default function RecommendationsScreen() {
   const originName = useTripStore((state) => state.originName);
   const destinationId = useTripStore((state) => state.destinationId);
+  const destinationName = useTripStore((state) => state.destinationName);
+  const destinationCoordinate = useTripStore((state) => state.destinationCoordinate);
   const originCoordinate = useTripStore((state) => state.originCoordinate);
   const spareMinutes = useTripStore((state) => state.spareMinutes);
   const companion = useTripStore((state) => state.companion);
@@ -24,13 +25,11 @@ export default function RecommendationsScreen() {
   const needsBarrierFree = useTripStore((state) => state.needsBarrierFree);
   const prefersLowWalking = useTripStore((state) => state.prefersLowWalking);
   const input = useMemo(() => {
-    const destination = destinationPresets.find((item) => item.id === destinationId) ?? destinationPresets[0];
-
     return {
       originName,
-      destinationId: destination.id,
-      destinationName: destination.name,
-      destinationCoordinate: destination.coordinate,
+      destinationId,
+      destinationName,
+      destinationCoordinate,
       originCoordinate,
       spareMinutes,
       companion,
@@ -38,7 +37,18 @@ export default function RecommendationsScreen() {
       needsBarrierFree,
       prefersLowWalking,
     };
-  }, [companion, destinationId, needsBarrierFree, originCoordinate, originName, prefersLowWalking, spareMinutes, weather]);
+  }, [
+    companion,
+    destinationCoordinate,
+    destinationId,
+    destinationName,
+    needsBarrierFree,
+    originCoordinate,
+    originName,
+    prefersLowWalking,
+    spareMinutes,
+    weather,
+  ]);
   const query = useQuery({
     queryKey: ['recommendation-result', input],
     queryFn: () => getRecommendationResult(input),

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
-import { defaultOrigin, destinationPresets, originPresets } from '@/data/destinations';
+import { defaultOrigin, destinationPresets } from '@/data/destinations';
 import type { CompanionType, Coordinate, RecommendationInput, WeatherPreference } from '@/domain/recommendation/types';
 
 const storageKey = 'zaturi-trip-store';
@@ -10,6 +10,7 @@ type TripState = {
   originName: string;
   destinationName: string;
   destinationId: string;
+  destinationCoordinate: Coordinate;
   spareMinutes: number;
   companion: CompanionType;
   weather: WeatherPreference;
@@ -21,6 +22,7 @@ type TripState = {
   hydrate: () => Promise<void>;
   setDestinationId: (destinationId: string) => void;
   setDestinationName: (destinationName: string) => void;
+  setDestinationPlace: (destinationName: string, destinationCoordinate: Coordinate, destinationId?: string) => void;
   setOriginName: (originName: string) => void;
   setOriginPlace: (originName: string, originCoordinate: Coordinate) => void;
   setSpareMinutes: (spareMinutes: number) => void;
@@ -40,6 +42,7 @@ type PersistedTripState = Pick<
   | 'originCoordinate'
   | 'destinationName'
   | 'destinationId'
+  | 'destinationCoordinate'
   | 'spareMinutes'
   | 'companion'
   | 'weather'
@@ -54,6 +57,7 @@ function toPersistedState(state: TripState): PersistedTripState {
     originCoordinate: state.originCoordinate,
     destinationName: state.destinationName,
     destinationId: state.destinationId,
+    destinationCoordinate: state.destinationCoordinate,
     spareMinutes: state.spareMinutes,
     companion: state.companion,
     weather: state.weather,
@@ -77,9 +81,10 @@ export const useTripStore = create<TripState>((set, get) => {
   }
 
   return {
-    originName: originPresets[0].name,
-    destinationName: destinationPresets[0].name,
-    destinationId: destinationPresets[0].id,
+    originName: '',
+    destinationName: '',
+    destinationId: 'pending-destination',
+    destinationCoordinate: destinationPresets[0].coordinate,
     spareMinutes: 60,
     companion: 'couple',
     weather: 'any',
@@ -97,12 +102,14 @@ export const useTripStore = create<TripState>((set, get) => {
 
       const parsed = JSON.parse(raw) as Partial<PersistedTripState>;
       const destinationId = parsed.destinationId ?? destinationPresets[0].id;
-      const destination = destinationPresets.find((item) => item.id === destinationId) ?? destinationPresets[0];
+      const destination = destinationPresets.find((item) => item.id === destinationId);
+      const fallbackDestination = destination ?? destinationPresets[0];
       set({
-        originName: parsed.originName ?? originPresets[0].name,
+        originName: parsed.originName ?? '',
         originCoordinate: parsed.originCoordinate ?? defaultOrigin,
-        destinationName: destination.name,
-        destinationId: destination.id,
+        destinationName: parsed.destinationName ?? '',
+        destinationId,
+        destinationCoordinate: parsed.destinationCoordinate ?? fallbackDestination.coordinate,
         spareMinutes: parsed.spareMinutes ?? 60,
         companion: parsed.companion ?? 'couple',
         weather: parsed.weather ?? 'any',
@@ -114,9 +121,19 @@ export const useTripStore = create<TripState>((set, get) => {
     },
     setDestinationId: (destinationId) => {
       const destination = destinationPresets.find((item) => item.id === destinationId);
-      commit({ destinationId, destinationName: destination?.name ?? get().destinationName });
+      commit({
+        destinationId,
+        destinationName: destination?.name ?? get().destinationName,
+        destinationCoordinate: destination?.coordinate ?? get().destinationCoordinate,
+      });
     },
     setDestinationName: (destinationName) => commit({ destinationName }),
+    setDestinationPlace: (destinationName, destinationCoordinate, destinationId) =>
+      commit({
+        destinationName,
+        destinationCoordinate,
+        destinationId: destinationId ?? `search-${destinationName}`,
+      }),
     setOriginName: (originName) => commit({ originName }),
     setOriginPlace: (originName, originCoordinate) => commit({ originName, originCoordinate }),
     setSpareMinutes: (spareMinutes) => commit({ spareMinutes }),
@@ -136,13 +153,12 @@ export const useTripStore = create<TripState>((set, get) => {
     clearSavedSpots: () => commit({ savedSpotIds: [] }),
     buildRecommendationInput: () => {
       const state = get();
-      const destination = destinationPresets.find((item) => item.id === state.destinationId) ?? destinationPresets[0];
 
       return {
         originName: state.originName,
-        destinationId: destination.id,
-        destinationName: destination.name,
-        destinationCoordinate: destination.coordinate,
+        destinationId: state.destinationId,
+        destinationName: state.destinationName,
+        destinationCoordinate: state.destinationCoordinate,
         originCoordinate: state.originCoordinate,
         spareMinutes: state.spareMinutes,
         companion: state.companion,

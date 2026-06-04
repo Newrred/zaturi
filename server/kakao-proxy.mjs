@@ -7,6 +7,7 @@ import { mapTourApiItemToTravelSpot, rankRouteCandidates, selectTourApiCandidate
 const localApiBaseUrl = 'https://dapi.kakao.com';
 const mobilityApiBaseUrl = 'https://apis-navi.kakaomobility.com';
 const tourApiBaseUrl = 'http://apis.data.go.kr/B551011/KorService2/';
+const vworldApiBaseUrl = 'https://api.vworld.kr';
 const defaultPort = 3000;
 const defaultAllowedOrigins = ['http://localhost:8081', 'http://127.0.0.1:8081', 'http://localhost:8082', 'http://127.0.0.1:8082'];
 const metersPerDegreeLat = 111_320;
@@ -18,6 +19,7 @@ loadEnvFile('.env.proxy.local');
 const port = Number(process.env.PORT ?? process.env.KAKAO_PROXY_PORT ?? defaultPort);
 const apiKey = process.env.KAKAO_REST_API_KEY;
 const tourApiKey = process.env.TOUR_API_SERVICE_KEY;
+const vworldApiKey = process.env.VWORLD_API_KEY;
 const allowedOrigins = (process.env.KAKAO_PROXY_ALLOWED_ORIGINS ?? defaultAllowedOrigins.join(','))
   .split(',')
   .map((origin) => origin.trim())
@@ -174,6 +176,29 @@ async function tourApiGet(pathname, params) {
   return data;
 }
 
+async function vworldGet(pathname, params) {
+  if (!vworldApiKey) return null;
+
+  const url = new URL(pathname, vworldApiBaseUrl);
+
+  for (const [key, value] of Object.entries({
+    key: vworldApiKey,
+    ...params,
+  })) {
+    if (value === undefined || value === null || value === '') continue;
+    url.searchParams.set(key, String(value));
+  }
+
+  const response = await fetch(url);
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new VWorldProxyError(response.status, data);
+  }
+
+  return data;
+}
+
 async function kakaoMobilityGet(pathname, params) {
   const url = new URL(pathname, mobilityApiBaseUrl);
 
@@ -223,6 +248,247 @@ class TourApiProxyError extends Error {
     this.statusCode = statusCode;
     this.details = details;
   }
+}
+
+class VWorldProxyError extends Error {
+  constructor(statusCode, details) {
+    super('VWorld upstream request failed');
+    this.statusCode = statusCode;
+    this.details = details;
+  }
+}
+
+function placeId(source, value) {
+  return `${source}-${String(value ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣]+/g, '-')
+    .replace(/(^-|-$)/g, '')}`;
+}
+
+function placeAreaFromAddress(address) {
+  const parts = String(address ?? '').split(/\s+/).filter(Boolean);
+  return parts.slice(0, 2).join(' ') || parts[0] || '';
+}
+
+function tourApiItemToPlaceResult(item) {
+  const latitude = Number(item.mapy);
+  const longitude = Number(item.mapx);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || Math.abs(latitude) < 1 || Math.abs(longitude) < 1 || !item.title) {
+    return null;
+  }
+
+  const address = [item.addr1, item.addr2].filter(Boolean).join(' ');
+
+  return {
+    id: placeId('tour', item.contentid ?? item.title),
+    name: String(item.title),
+    address: address || '주소 정보 확인 필요',
+    area: placeAreaFromAddress(address),
+    coordinate: { latitude, longitude },
+    source: 'tourApi',
+    sourceLabel: 'TourAPI 키워드 검색',
+    categoryLabel: contentTypeLabel(item.contenttypeid),
+    description: address || '관광공사 관광정보 후보',
+  };
+}
+
+function contentTypeLabel(contentTypeId) {
+  switch (String(contentTypeId ?? '')) {
+    case '12':
+      return '관광지';
+    case '14':
+      return '문화시설';
+    case '15':
+      return '행사/축제';
+    case '25':
+      return '여행코스';
+    case '28':
+      return '레포츠';
+    case '32':
+      return '숙박';
+    case '38':
+      return '쇼핑';
+    case '39':
+      return '음식점';
+    default:
+      return '관광정보';
+  }
+}
+
+function normalizeSearchText(value) {
+  return String(value ?? '').replace(/\s+/g, '').toLowerCase();
+}
+
+function searchTokens(query) {
+  return [...new Set(String(query).split(/\s+/).map((token) => token.trim()).filter((token) => token.length >= 2))];
+}
+
+function tourApiSearchQueries(query) {
+  const compact = String(query).replace(/\s+/g, '');
+  return [...new Set([query, compact, ...searchTokens(query)].filter((value) => value.length >= 2))];
+}
+
+function placeSearchScore(result, query) {
+  const haystack = normalizeSearchText(`${result.name} ${result.address}`);
+  const normalizedQuery = normalizeSearchText(query);
+  let score = 0;
+
+  if (haystack.includes(normalizedQuery)) score += 80;
+
+  for (const token of searchTokens(query)) {
+    if (haystack.includes(normalizeSearchText(token))) score += 18;
+  }
+
+  if (result.address.includes('강원')) score += 8;
+  if (result.categoryLabel === '관광지' || result.categoryLabel === '문화시설') score += 6;
+  if (result.categoryLabel === '쇼핑' || result.categoryLabel === '음식점') score -= 4;
+
+  return score;
+}
+
+async function fetchTourApiKeywordPlaces(query, limit) {
+  const data = await tourApiGet('/searchKeyword2', {
+    numOfRows: Math.max(limit, 10),
+    pageNo: 1,
+    arrange: 'A',
+    keyword: query,
+  });
+
+  return tourApiItems(data)
+    .map(tourApiItemToPlaceResult)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function fetchTourApiNearbyPlaces(seed, limit) {
+  const data = await tourApiGet('/locationBasedList2', {
+    numOfRows: Math.max(limit, 10),
+    pageNo: 1,
+    arrange: 'S',
+    mapX: seed.coordinate.longitude,
+    mapY: seed.coordinate.latitude,
+    radius: 1500,
+  });
+
+  return tourApiItems(data)
+    .map(tourApiItemToPlaceResult)
+    .filter(Boolean)
+    .slice(0, limit);
+}
+
+async function searchTourApiPlaces(query, limit) {
+  if (!tourApiKey) return [];
+
+  const results = [];
+
+  for (const searchQuery of tourApiSearchQueries(query)) {
+    results.push(...(await fetchTourApiKeywordPlaces(searchQuery, limit)));
+  }
+
+  const nearbySeeds = dedupePlaceResults(results)
+    .filter((result) => placeSearchScore(result, query) > 0)
+    .slice(0, 2);
+
+  for (const seed of nearbySeeds) {
+    results.push(...(await fetchTourApiNearbyPlaces(seed, limit)));
+  }
+
+  return dedupePlaceResults(results)
+    .sort((a, b) => placeSearchScore(b, query) - placeSearchScore(a, query))
+    .slice(0, limit);
+}
+
+function vworldAddressToPlaceResult(data, query, type) {
+  const result = data?.response?.result;
+  const point = result?.point;
+  const latitude = Number(point?.y);
+  const longitude = Number(point?.x);
+
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return null;
+  }
+
+  const refined = result?.refined;
+  const address = refined?.text || result?.text || query;
+
+  return {
+    id: placeId('vworld', `${type}-${address}-${longitude}-${latitude}`),
+    name: address,
+    address,
+    area: placeAreaFromAddress(address),
+    coordinate: { latitude, longitude },
+    source: 'vworld',
+    sourceLabel: 'VWorld 주소 지오코딩',
+    categoryLabel: type === 'road' ? '도로명 주소' : '지번 주소',
+    description: '주소를 좌표로 변환한 후보',
+  };
+}
+
+async function searchVWorldAddressPlaces(query) {
+  if (!vworldApiKey) return [];
+
+  const results = [];
+
+  for (const type of ['road', 'parcel']) {
+    const data = await vworldGet('/req/address', {
+      service: 'address',
+      request: 'getcoord',
+      version: '2.0',
+      crs: 'epsg:4326',
+      address: query,
+      refine: 'true',
+      simple: 'false',
+      format: 'json',
+      type,
+    });
+    const result = vworldAddressToPlaceResult(data, query, type);
+
+    if (result) {
+      results.push(result);
+    }
+  }
+
+  return results;
+}
+
+function dedupePlaceResults(results) {
+  const deduped = new Map();
+
+  for (const result of results) {
+    const key = `${result.name.replace(/\s+/g, '')}-${result.coordinate.latitude.toFixed(5)}-${result.coordinate.longitude.toFixed(5)}`;
+    if (!deduped.has(key)) {
+      deduped.set(key, result);
+    }
+  }
+
+  return [...deduped.values()];
+}
+
+async function searchPlaces(searchParams) {
+  const query = String(searchParams.get('query') ?? '').trim();
+  const role = String(searchParams.get('role') ?? 'destination');
+  const limit = Math.max(1, Math.min(12, Number(searchParams.get('limit') ?? 8)));
+
+  if (query.length < 2) {
+    throw new RequestError(400, 'INVALID_PLACE_SEARCH_QUERY', 'query must be at least 2 characters.');
+  }
+
+  const [tourApiResults, vworldResults] = await Promise.all([
+    searchTourApiPlaces(query, limit),
+    searchVWorldAddressPlaces(query),
+  ]);
+  const ordered = role === 'origin' ? [...vworldResults, ...tourApiResults] : [...tourApiResults, ...vworldResults];
+
+  return {
+    query,
+    role,
+    providers: {
+      tourApi: Boolean(tourApiKey),
+      vworld: Boolean(vworldApiKey),
+    },
+    results: dedupePlaceResults(ordered).slice(0, limit),
+  };
 }
 
 function normalizeDirectionRoute(route, fallbackOrigin, fallbackDestination) {
@@ -412,7 +678,7 @@ async function assessSpotWithWaypointRoute(origin, destination, spot, baselineRo
     priority: 'RECOMMEND',
     alternatives: false,
     road_details: false,
-    summary: true,
+    summary: false,
   });
   const route = response?.routes?.[0];
 
@@ -426,6 +692,7 @@ async function assessSpotWithWaypointRoute(origin, destination, spot, baselineRo
   const addedDriveMinutes = Math.max(0, waypointDurationMinutes - baselineRoute.durationMinutes);
   const addedDistanceMeters = Math.max(0, waypointDistanceMeters - baselineRoute.distanceMeters);
   const sections = Array.isArray(route.sections) ? route.sections : [];
+  const waypointPolyline = extractPolyline(sections) ?? [origin.coordinate, spot.coordinate, destination.coordinate];
   const driveToSpotMinutes = Math.max(1, Math.ceil(Number(sections[0]?.duration ?? summary.duration ?? 0) / 60));
   const driveFromSpotMinutes = Math.max(1, Math.ceil(Number(sections[1]?.duration ?? 0) / 60));
 
@@ -436,6 +703,7 @@ async function assessSpotWithWaypointRoute(origin, destination, spot, baselineRo
     driveFromSpotMinutes,
     waypointDurationMinutes,
     waypointDistanceMeters,
+    waypointPolyline,
     addedDriveMinutes,
     addedDistanceMeters,
     confidence: confidenceForDistance(spot.routeCorridorDistanceMeters),
@@ -533,8 +801,21 @@ async function handleRequest(req, res) {
       ok: true,
       hasKakaoRestApiKey: Boolean(apiKey),
       hasTourApiServiceKey: Boolean(tourApiKey),
+      hasVWorldApiKey: Boolean(vworldApiKey),
       allowedOrigins,
     });
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/places/search') {
+    sendJson(req, res, 200, await searchPlaces(url.searchParams));
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/tour/location') {
+    if (!requireTourApiKey(req, res)) return;
+
+    sendJson(req, res, 200, await tourApiGet('/locationBasedList2', Object.fromEntries(url.searchParams.entries())));
     return;
   }
 
@@ -555,13 +836,6 @@ async function handleRequest(req, res) {
       res,
       withSearchParams('/v2/local/search/address.json', Object.fromEntries(url.searchParams.entries())),
     );
-    return;
-  }
-
-  if (req.method === 'GET' && url.pathname === '/api/tour/location') {
-    if (!requireTourApiKey(req, res)) return;
-
-    sendJson(req, res, 200, await tourApiGet('/locationBasedList2', Object.fromEntries(url.searchParams.entries())));
     return;
   }
 
@@ -618,6 +892,14 @@ const server = createServer((req, res) => {
     if (error instanceof TourApiProxyError) {
       sendJson(req, res, error.statusCode, {
         error: 'TOUR_API_UPSTREAM_ERROR',
+        details: error.details,
+      });
+      return;
+    }
+
+    if (error instanceof VWorldProxyError) {
+      sendJson(req, res, error.statusCode, {
+        error: 'VWORLD_UPSTREAM_ERROR',
         details: error.details,
       });
       return;

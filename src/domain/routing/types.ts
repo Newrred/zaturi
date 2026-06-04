@@ -24,6 +24,7 @@ export type SpotRouteAssessment = {
   driveFromSpotMinutes: number;
   waypointDurationMinutes: number;
   waypointDistanceMeters: number;
+  waypointPolyline?: Coordinate[];
   addedDriveMinutes: number;
   addedDistanceMeters: number;
   confidence: RouteConfidence;

@@ -36,6 +36,8 @@ The local proxy in `server/kakao-proxy.mjs` now:
 4. Returns app-owned `TravelSpot` candidates with policy metadata such as content type, priority, and reasons.
 5. Falls back to the existing mock spots if TourAPI is unavailable or returns no usable candidates.
 
+The proxy also exposes `GET /api/places/search?query=...&role=origin|destination`. This currently uses TourAPI `searchKeyword2` for tourism-oriented place search and can use VWorld address geocoding when `VWORLD_API_KEY` is configured.
+
 Tuning variables:
 
 ```text

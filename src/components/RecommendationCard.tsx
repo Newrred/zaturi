@@ -1,5 +1,7 @@
-import { ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { RouteMiniMap } from '@/components/RouteMiniMap';
 import { Badge, Card } from '@/components/ui';
 import { colors, radius, spacing } from '@/constants/theme';
 import type { RecommendationBundle } from '@/domain/recommendation/types';
@@ -17,11 +19,12 @@ export function RecommendationCard({ bundle, onPress }: { bundle: Recommendation
   return (
     <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
       <Card>
-        <ImageBackground source={{ uri: spot.imageUrl }} style={styles.image} imageStyle={styles.imageInner}>
+        <View style={styles.image}>
+          <Image source={{ uri: spot.imageUrl }} style={styles.imagePhoto} contentFit="cover" />
           <View style={styles.imageShade}>
             <Badge label={bundle.routeFitLabel} tone={bundle.detourMinutes <= 10 ? 'green' : 'amber'} />
           </View>
-        </ImageBackground>
+        </View>
         <View style={styles.titleRow}>
           <View style={styles.titleColumn}>
             <Text style={styles.title}>{bundle.title}</Text>
@@ -45,6 +48,12 @@ export function RecommendationCard({ bundle, onPress }: { bundle: Recommendation
             경로선 {formatKm(assessment.routeCorridorDistanceMeters)}km · {bundle.routePlan.isLive ? '실시간 API' : 'Mock 계산'}
           </Text>
         </View>
+        <RouteMiniMap
+          baselineRoute={baselineRoute}
+          waypointRoute={waypointRoute}
+          spot={spot}
+          detourMinutes={assessment.addedDriveMinutes}
+        />
         <View style={styles.reasonList}>
           {bundle.reasons.slice(0, 3).map((reason) => (
             <Text key={reason} style={styles.reason}>
@@ -67,8 +76,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.primarySoft,
   },
-  imageInner: {
-    borderRadius: radius.md,
+  imagePhoto: {
+    ...StyleSheet.absoluteFillObject,
   },
   imageShade: {
     flex: 1,

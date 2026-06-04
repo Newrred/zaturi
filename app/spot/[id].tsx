@@ -1,10 +1,10 @@
 import { useLocalSearchParams, router } from 'expo-router';
-import { ImageBackground, StyleSheet, Text, View } from 'react-native';
+import { Image } from 'expo-image';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { SpotMap } from '@/components/SpotMap';
 import { Badge, Card, EmptyState, PrimaryButton, Screen, SecondaryButton, Section } from '@/components/ui';
 import { colors, radius, spacing } from '@/constants/theme';
-import { destinationPresets } from '@/data/destinations';
 import { getSpotById } from '@/domain/recommendation/recommend';
 import { useTripStore } from '@/store/useTripStore';
 import { openWaypointNavigation } from '@/utils/navigation';
@@ -15,8 +15,8 @@ export default function SpotDetailScreen() {
   const savedSpotIds = useTripStore((state) => state.savedSpotIds);
   const toggleSavedSpot = useTripStore((state) => state.toggleSavedSpot);
   const originCoordinate = useTripStore((state) => state.originCoordinate);
-  const destinationId = useTripStore((state) => state.destinationId);
-  const destination = destinationPresets.find((item) => item.id === destinationId) ?? destinationPresets[0];
+  const destinationName = useTripStore((state) => state.destinationName);
+  const destinationCoordinate = useTripStore((state) => state.destinationCoordinate);
 
   if (!spot) {
     return (
@@ -39,7 +39,7 @@ export default function SpotDetailScreen() {
             onPress={() =>
               void openWaypointNavigation({
                 originCoordinate,
-                destinationCoordinate: destination.coordinate,
+                destinationCoordinate,
                 waypoint: spot,
               })
             }
@@ -47,11 +47,12 @@ export default function SpotDetailScreen() {
         </View>
       }
     >
-      <ImageBackground source={{ uri: spot.imageUrl }} style={styles.heroImage} imageStyle={styles.heroImageInner}>
+      <View style={styles.heroImage}>
+        <Image source={{ uri: spot.imageUrl }} style={styles.heroPhoto} contentFit="cover" />
         <View style={styles.heroShade}>
           <Badge label={spot.sourceLabel} tone="blue" />
         </View>
-      </ImageBackground>
+      </View>
 
       <View style={styles.header}>
         <Text style={styles.title}>{spot.name}</Text>
@@ -84,7 +85,7 @@ export default function SpotDetailScreen() {
       <Section title="경유 흐름">
         <Card>
           <Text style={styles.reasonText}>
-            현재 선택한 출발지에서 이 스팟을 들른 뒤 {destination.name}까지 이어지는 경유 경로로 열 수 있습니다.
+            현재 선택한 출발지에서 이 스팟을 들른 뒤 {destinationName || '목적지'}까지 이어지는 경유 경로로 열 수 있습니다.
           </Text>
         </Card>
       </Section>
@@ -112,8 +113,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.primarySoft,
   },
-  heroImageInner: {
-    borderRadius: radius.md,
+  heroPhoto: {
+    ...StyleSheet.absoluteFillObject,
   },
   heroShade: {
     flex: 1,

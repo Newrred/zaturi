@@ -30,6 +30,8 @@ maestro/
 server/
   kakao-proxy.mjs
   recommendation/
+modules/
+  zaturi-kakao-map/
 work_logs/
 tools/
 ```
@@ -49,6 +51,10 @@ app/
 
 src/
   components/
+    RouteMiniMap.tsx
+    SpotMap.android.tsx
+    SpotMap.native.tsx
+    SpotMap.web.tsx
     recommendation/
     layout/
     form/
@@ -76,11 +82,14 @@ src/
       mapper.ts
   hooks/
   utils/
+    openStreetMap.ts
   types/
 server/
   kakao-proxy.mjs
   recommendation/
     tour-candidate-policy.mjs
+modules/
+  zaturi-kakao-map/
 ```
 
 The exact structure can change, but keep these boundaries clear:
@@ -91,8 +100,11 @@ The exact structure can change, but keep these boundaries clear:
 - `src/services/`: external API clients and response mapping.
 - `src/data/`: mock or seed data used for prototyping.
 - `src/constants/`: colors, spacing, labels, and stable UI values.
+- `src/utils/openStreetMap.ts`: free MVP map embed URL helpers for spot previews.
+- `src/components/SpotMap.android.tsx`: Android spot map preview. Uses Kakao Maps Native SDK when `EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY` is configured, otherwise falls back to OSM.
 - `server/`: local backend proxy code for secret-bearing public API calls.
 - `server/recommendation/`: server-side candidate selection policy that should stay separate from API plumbing.
+- `modules/zaturi-kakao-map/`: local Expo native module that wraps Kakao Maps SDK for Android. Keep the JS prop surface provider-agnostic enough to add iOS later.
 
 ## Data Model Direction
 
@@ -109,6 +121,8 @@ Core model candidates:
 Do not let raw external API shapes leak into UI components. Map TourAPI, Kakao Mobility, or other public data into app-owned types first.
 
 Kakao REST API keys must not be stored directly in the Expo client. Use `server/kakao-proxy.mjs` for local live Kakao Local and Kakao Mobility calls, then return normalized route models to the app.
+
+Kakao Maps Native App Key may be exposed to the client build through `EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY`, but it must be the native app key, not the REST API key. Register the Android package name and key hash in Kakao Developers before expecting the native map to authenticate.
 
 TourAPI raw items should not flow directly into screens. Route them through `server/recommendation/tour-candidate-policy.mjs`, then send app-owned `TravelSpot` data and policy reasons to the client.
 

@@ -1,6 +1,6 @@
 # APK Test Build
 
-Last updated: 2026-05-20
+Last updated: 2026-06-04
 
 ## Goal
 
@@ -21,9 +21,24 @@ Keep these keys only on the server:
 ```text
 KAKAO_REST_API_KEY=
 TOUR_API_SERVICE_KEY=
+VWORLD_API_KEY=
 ```
 
 Do not put Kakao or TourAPI keys in any `EXPO_PUBLIC_` variable.
+
+The Android Kakao map preview is different from those server APIs. It needs a client-visible Native App Key:
+
+```text
+EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY=
+```
+
+This must be Kakao's Native App Key, not the REST API key. Register the Android package `com.zaturi.app` and the APK signing key hash in Kakao Developers.
+
+For EAS preview builds, set it in the preview environment:
+
+```powershell
+npx eas-cli@latest env:create preview --name EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY --value "your-kakao-native-app-key" --type string --visibility plaintext --non-interactive --force
+```
 
 ## Recommended Flow
 
@@ -89,7 +104,10 @@ healthCheckPath: /health
 ```text
 KAKAO_REST_API_KEY
 TOUR_API_SERVICE_KEY
+VWORLD_API_KEY
 ```
+
+`VWORLD_API_KEY` is optional, but address-to-coordinate search is much weaker without it.
 
 5. Deploy the service.
 6. Copy the generated HTTPS URL, usually like:
@@ -120,10 +138,38 @@ Use that HTTPS URL as `EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL` for the EAS `preview`
 
 ```powershell
 npm run typecheck
+npm run check:deps
 npx react-doctor@latest --verbose --diff
 ```
 
 Then test the same proxy URL that will be baked into the APK.
+
+Before relying on a public tester APK, confirm the deployed proxy has the latest app endpoints:
+
+```powershell
+Invoke-RestMethod -Uri "https://your-public-proxy.example.com/health"
+Invoke-RestMethod -Uri "https://your-public-proxy.example.com/api/places/search?query=%EC%84%9C%EC%9A%B8%EC%97%AD&role=origin"
+```
+
+`/health` can pass even when the deployed server is old. If `/api/places/search` returns `404`, push the latest `server/kakao-proxy.mjs` changes and redeploy Render before building or sharing the APK.
+
+For Kakao Maps Native SDK authentication, the current Android EAS preview APK inspected on 2026-06-04 used:
+
+```text
+Android package: com.zaturi.app
+APK signer SHA-1: 0eaa86853ea0a476fa3547c360c4b4f53d0af8cd
+Kakao key hash: DqqGhT6gpHb6NUfDYMS09T0K+M0=
+```
+
+Register the Kakao key hash in Kakao Developers for the same app that owns `EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY`.
+
+The current APK build includes:
+
+- SVG route comparison cards through `react-native-svg`.
+- Android spot map pin previews through Kakao Maps Native SDK when `EXPO_PUBLIC_KAKAO_NATIVE_APP_KEY` is set.
+- OSM/WebView spot map fallback for iOS, web, Android builds without a Kakao native key, and Android Kakao map load failures.
+
+Because these are native dependencies, rebuild the preview APK after pulling these changes. Expo Go will not include `modules/zaturi-kakao-map`.
 
 ## If You Build Before Deploying The Proxy
 
