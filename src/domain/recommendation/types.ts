@@ -9,6 +9,8 @@ export type CompanionType = 'solo' | 'couple' | 'family' | 'senior';
 
 export type WeatherPreference = 'any' | 'sunny' | 'rain';
 
+export type MovementMode = 'walk' | 'car';
+
 export type SpotCategory =
   | 'view'
   | 'walk'
@@ -38,7 +40,7 @@ export type TravelSpot = {
   openNow: boolean;
   navKeyword: string;
   candidateMeta?: {
-    source: 'tourApi' | 'mock';
+    source: 'tourApi' | 'mock' | 'user';
     contentTypeId?: string;
     priority: number;
     excluded?: boolean;
@@ -78,6 +80,62 @@ export type RecommendationResult = {
   baselineRoute: RouteSummary;
   bundles: RecommendationBundle[];
 };
+
+export type NearbyRecommendationInput = {
+  baseName: string;
+  baseCoordinate: Coordinate;
+  spareMinutes: number;
+  movementMode: MovementMode;
+  companion: CompanionType;
+  weather: WeatherPreference;
+  needsBarrierFree: boolean;
+  prefersLowWalking: boolean;
+  includeReturnToBase: boolean;
+};
+
+export type NearbyRecommendation = {
+  id: string;
+  title: string;
+  subtitle: string;
+  spot: TravelSpot;
+  totalMinutes: number;
+  travelMinutes: number;
+  returnMinutes: number;
+  stayMinutes: number;
+  distanceMeters: number;
+  score: number;
+  fitLabel: string;
+  reasons: string[];
+  movementMode: MovementMode;
+};
+
+export type NearbyRecommendationResult = {
+  providerLabel: string;
+  isLive: boolean;
+  baseName: string;
+  spareMinutes: number;
+  recommendations: NearbyRecommendation[];
+};
+
+export type UserZaturiSpot = {
+  id: string;
+  name: string;
+  address: string;
+  area: string;
+  coordinate: Coordinate;
+  summary: string;
+  stayMinutes: number;
+  walkingMinutes: number;
+  parking: boolean;
+  barrierFree: boolean;
+  kidFriendly: boolean;
+  indoor: boolean;
+  weatherFit: WeatherPreference[];
+  tags: string[];
+  createdAt: string;
+};
+
+export type SavedSpotSnapshot = TravelSpot;
 
 export type DestinationPreset = {
   id: string;

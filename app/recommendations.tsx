@@ -24,6 +24,7 @@ export default function RecommendationsScreen() {
   const weather = useTripStore((state) => state.weather);
   const needsBarrierFree = useTripStore((state) => state.needsBarrierFree);
   const prefersLowWalking = useTripStore((state) => state.prefersLowWalking);
+  const userSpots = useTripStore((state) => state.userSpots);
   const input = useMemo(() => {
     return {
       originName,
@@ -49,11 +50,11 @@ export default function RecommendationsScreen() {
     spareMinutes,
     weather,
   ]);
-  const query = useQuery({
-    queryKey: ['recommendation-result', input],
-    queryFn: () => getRecommendationResult(input),
+  const { data, isLoading } = useQuery({
+    queryKey: ['recommendation-result', input, userSpots],
+    queryFn: () => getRecommendationResult(input, userSpots),
   });
-  const baselineRoute = query.data?.baselineRoute;
+  const baselineRoute = data?.baselineRoute;
 
   return (
     <Screen>
@@ -73,29 +74,29 @@ export default function RecommendationsScreen() {
                   약 {baselineRoute.durationMinutes}분 · {formatKm(baselineRoute.distanceMeters)}km · {baselineRoute.trafficLabel}
                 </Text>
               </View>
-              <Badge label={query.data?.isLive ? '카카오 API' : '카카오 Mock'} tone="blue" />
+              <Badge label={data?.isLive ? '카카오 API' : '카카오 Mock'} tone="blue" />
             </View>
           </Card>
         </Section>
       ) : null}
 
-      {query.isLoading ? (
+      {isLoading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.primary} />
           <Text style={styles.loadingText}>기본 경로와 경유 후보를 계산하고 있어요.</Text>
         </View>
       ) : null}
 
-      {query.data?.bundles.length === 0 ? (
+      {data?.bundles.length === 0 ? (
         <EmptyState title="추천 가능한 후보가 적어요" description="남는 시간을 조금 늘리거나 접근성/보행 조건을 낮춰보세요." />
       ) : null}
 
-      {query.data?.bundles.map((bundle) => (
+      {data?.bundles.map((bundle) => (
         <RecommendationCard
           key={bundle.id}
           bundle={bundle}
           onPress={() => {
-            router.push({ pathname: '/spot/[id]', params: { id: bundle.spots[0].id } });
+            router.push({ pathname: '/spot/[id]', params: { id: bundle.spots[0].id, context: 'moving' } });
           }}
         />
       ))}

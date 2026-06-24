@@ -8,16 +8,19 @@ import { colors, radius, spacing } from '@/constants/theme';
 import { getSpotById } from '@/domain/recommendation/recommend';
 import { useTripStore } from '@/store/useTripStore';
 import { normalizeRemoteMediaUrl } from '@/utils/mediaUrl';
-import { openWaypointNavigation } from '@/utils/navigation';
+import { openNavigation, openWaypointNavigation } from '@/utils/navigation';
 
 export default function SpotDetailScreen() {
-  const params = useLocalSearchParams<{ id: string }>();
-  const spot = params.id ? getSpotById(params.id) : undefined;
+  const params = useLocalSearchParams<{ id: string; context?: string }>();
+  const userSpots = useTripStore((state) => state.userSpots);
+  const savedSpotSnapshots = useTripStore((state) => state.savedSpotSnapshots);
+  const spot = params.id ? getSpotById(params.id, userSpots, savedSpotSnapshots) : undefined;
   const savedSpotIds = useTripStore((state) => state.savedSpotIds);
   const toggleSavedSpot = useTripStore((state) => state.toggleSavedSpot);
   const originCoordinate = useTripStore((state) => state.originCoordinate);
   const destinationName = useTripStore((state) => state.destinationName);
   const destinationCoordinate = useTripStore((state) => state.destinationCoordinate);
+  const isMovingContext = params.context === 'moving' && Boolean(destinationName);
 
   if (!spot) {
     return (
@@ -34,15 +37,17 @@ export default function SpotDetailScreen() {
     <Screen
       footer={
         <View style={styles.footerButtons}>
-          <SecondaryButton label={isSaved ? '저장 해제' : '저장'} onPress={() => toggleSavedSpot(spot.id)} />
+          <SecondaryButton label={isSaved ? '저장 해제' : '저장'} onPress={() => toggleSavedSpot(spot.id, spot)} />
           <PrimaryButton
-            label="경유 경로 열기"
+            label={isMovingContext ? '경유 경로 열기' : '지도에서 열기'}
             onPress={() =>
-              void openWaypointNavigation({
-                originCoordinate,
-                destinationCoordinate,
-                waypoint: spot,
-              })
+              isMovingContext
+                ? void openWaypointNavigation({
+                    originCoordinate,
+                    destinationCoordinate,
+                    waypoint: spot,
+                  })
+                : void openNavigation(spot)
             }
           />
         </View>
@@ -86,7 +91,9 @@ export default function SpotDetailScreen() {
       <Section title="경유 흐름">
         <Card>
           <Text style={styles.reasonText}>
-            현재 선택한 출발지에서 이 스팟을 들른 뒤 {destinationName || '목적지'}까지 이어지는 경유 경로로 열 수 있습니다.
+            {isMovingContext
+              ? `현재 선택한 출발지에서 이 스팟을 들른 뒤 ${destinationName}까지 이어지는 경유 경로로 열 수 있습니다.`
+              : '현재는 주변 추천 또는 직접 저장한 장소 맥락입니다. 지도에서 장소를 열어 실제 위치를 확인할 수 있습니다.'}
           </Text>
         </Card>
       </Section>

@@ -1,0 +1,19 @@
+appId: com.zaturi.app
+---
+- clearState
+- launchApp
+- assertVisible: "틈새 탐색"
+- assertVisible: "틈새 탐색 시작"
+- tapOn: "틈새 탐색 시작"
+- assertVisible: "이동 자투리 탐색"
+- assertVisible: "근처 자투리 탐색"
+- tapOn: "근처 자투리 탐색"
+- assertVisible: "지금 어디에 있나요?"
+- assertVisible: "강릉역, 속초 숙소"
+- assertVisible: "검색 결과에서 장소를 선택해야 합니다"
+- tapOn: "이동 자투리 탐색"
+- assertVisible: "지금 어디로 가는 길인가요?"
+- assertVisible: "서울역"
+- assertVisible: "강릉 안목해변"
+- tapOn: "닫기"
+- assertVisible: "틈새 탐색 시작"

@@ -16,6 +16,7 @@
     "check:react:strict": "react-doctor --verbose --offline --fail-on error",
     "maestro:version": "maestro --version",
     "test:e2e": "maestro test maestro/flows",
+    "test:e2e:live": "maestro test maestro/live-flows",
     "log:new": "node tools/logging/new-work-log.mjs",
     "eas:login": "npx eas-cli@latest login",
     "eas:whoami": "npx eas-cli@latest whoami",
@@ -26,6 +27,7 @@
     "build:ios": "npx eas-cli@latest build --profile production --platform ios"
   },
   "dependencies": {
+    "@gorhom/bottom-sheet": "^5.2.14",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@tanstack/react-query": "^5.100.11",
     "expo": "~54.0.35",
@@ -41,12 +43,15 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
+    "react-native-gesture-handler": "~2.28.0",
     "react-native-maps": "1.20.1",
+    "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
     "react-native-svg": "15.12.1",
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.15.0",
+    "react-native-worklets": "0.5.1",
     "zod": "^4.4.3",
     "zustand": "^5.0.13"
   },

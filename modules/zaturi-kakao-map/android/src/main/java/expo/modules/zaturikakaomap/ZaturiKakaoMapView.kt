@@ -22,6 +22,7 @@ import com.kakao.vectormap.label.LabelTextStyle
 import expo.modules.kotlin.AppContext
 import expo.modules.kotlin.viewevent.EventDispatcher
 import expo.modules.kotlin.views.ExpoView
+import org.json.JSONArray
 
 class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
   internal val onMapReady by EventDispatcher<Unit>()
@@ -31,11 +32,13 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
   private val messageView = TextView(context)
   private var kakaoMap: KakaoMap? = null
   private var pinLabel: Label? = null
+  private val markerLabels = mutableListOf<Label>()
   private var appKey = ""
   private var latitude = 37.5665
   private var longitude = 126.978
   private var title = "Selected place"
   private var subtitle = ""
+  private var markersJson = ""
   private var zoomLevel = 15
   private var startRequested = false
   private var disposed = false
@@ -79,6 +82,11 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
     updateMapContent()
   }
 
+  fun setMarkersJson(value: String?) {
+    markersJson = value.orEmpty()
+    updateMapContent()
+  }
+
   fun setZoomLevel(value: Int) {
     zoomLevel = value.coerceIn(1, 21)
     updateMapContent()
@@ -111,6 +119,7 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
           override fun onMapDestroy() {
             kakaoMap = null
             pinLabel = null
+            markerLabels.clear()
           }
 
           override fun onMapError(error: Exception) {
@@ -148,6 +157,7 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
     disposed = true
     kakaoMap = null
     pinLabel = null
+    markerLabels.clear()
     if (startRequested && mapView.isStarted) {
       mapView.finish()
     }
@@ -175,7 +185,11 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
     val map = kakaoMap ?: return
     val position = currentPosition()
     map.moveCamera(CameraUpdateFactory.newCenterPosition(position, zoomLevel))
-    updatePin(map, position)
+    if (markersJson.isBlank()) {
+      updatePin(map, position)
+    } else {
+      updateMarkers(map)
+    }
   }
 
   private fun updatePin(map: KakaoMap, position: LatLng) {
@@ -202,6 +216,69 @@ class ZaturiKakaoMapView(context: Context, appContext: AppContext) : ExpoView(co
         .setStyles(styles)
         .setTexts(labelText)
     )
+  }
+
+  private fun updateMarkers(map: KakaoMap) {
+    val labelManager = map.labelManager ?: return
+    val layer = labelManager.layer ?: return
+
+    pinLabel?.remove()
+    pinLabel = null
+
+    markerLabels.forEach { it.remove() }
+    markerLabels.clear()
+
+    try {
+      val markers = JSONArray(markersJson)
+      for (index in 0 until markers.length()) {
+        val marker = markers.getJSONObject(index)
+        val markerLatitude = marker.optDouble("latitude", Double.NaN)
+        val markerLongitude = marker.optDouble("longitude", Double.NaN)
+
+        if (markerLatitude.isNaN() || markerLatitude.isInfinite() || markerLongitude.isNaN() || markerLongitude.isInfinite()) {
+          continue
+        }
+
+        val label = marker.optString("label", (index + 1).toString())
+        val markerTitle = marker.optString("title", label)
+        val variant = marker.optString("variant", "candidate")
+        val position = LatLng.from(markerLatitude, markerLongitude)
+        val styles = labelManager.addLabelStyles(
+          LabelStyles.from(
+            LabelStyle.from(
+              LabelTextStyle.from(18, Color.WHITE, 4, markerColor(variant))
+            ).setPadding(8f)
+          )
+        )
+        val labelText = LabelTextBuilder().apply {
+          if (markerTitle.isBlank() || markerTitle == label) {
+            setTexts(label)
+          } else {
+            setTexts(label, markerTitle)
+          }
+        }
+
+        markerLabels.add(
+          layer.addLabel(
+            LabelOptions.from(position)
+              .setStyles(styles)
+              .setTexts(labelText)
+          )
+        )
+      }
+    } catch (error: Exception) {
+      failMap("INVALID_MARKERS", error.message ?: "Failed to parse Kakao map markers.")
+    }
+  }
+
+  private fun markerColor(variant: String): Int {
+    return when (variant) {
+      "base" -> Color.parseColor("#8C1D2A")
+      "origin" -> Color.parseColor("#146C5B")
+      "destination" -> Color.parseColor("#2F5D8C")
+      "candidate" -> Color.parseColor("#C8872C")
+      else -> Color.parseColor("#D94B5B")
+    }
   }
 
   private fun isKakaoNativeAbiSupported(): Boolean {

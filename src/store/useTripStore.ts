@@ -2,7 +2,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 
 import { defaultOrigin, destinationPresets } from '@/data/destinations';
-import type { CompanionType, Coordinate, RecommendationInput, WeatherPreference } from '@/domain/recommendation/types';
+import type {
+  CompanionType,
+  Coordinate,
+  MovementMode,
+  NearbyRecommendationInput,
+  RecommendationInput,
+  SavedSpotSnapshot,
+  TravelSpot,
+  UserZaturiSpot,
+  WeatherPreference,
+} from '@/domain/recommendation/types';
 
 const storageKey = 'zaturi-trip-store';
 
@@ -17,7 +27,13 @@ type TripState = {
   needsBarrierFree: boolean;
   prefersLowWalking: boolean;
   originCoordinate: Coordinate;
+  nearbyBaseName: string;
+  nearbyBaseCoordinate: Coordinate;
+  nearbyMovementMode: MovementMode;
+  nearbyIncludeReturn: boolean;
+  userSpots: UserZaturiSpot[];
   savedSpotIds: string[];
+  savedSpotSnapshots: SavedSpotSnapshot[];
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setDestinationId: (destinationId: string) => void;
@@ -25,21 +41,32 @@ type TripState = {
   setDestinationPlace: (destinationName: string, destinationCoordinate: Coordinate, destinationId?: string) => void;
   setOriginName: (originName: string) => void;
   setOriginPlace: (originName: string, originCoordinate: Coordinate) => void;
+  setNearbyBasePlace: (nearbyBaseName: string, nearbyBaseCoordinate: Coordinate) => void;
+  setNearbyMovementMode: (nearbyMovementMode: MovementMode) => void;
+  setNearbyIncludeReturn: (nearbyIncludeReturn: boolean) => void;
   setSpareMinutes: (spareMinutes: number) => void;
   setCompanion: (companion: CompanionType) => void;
   setWeather: (weather: WeatherPreference) => void;
   setNeedsBarrierFree: (needsBarrierFree: boolean) => void;
   setPrefersLowWalking: (prefersLowWalking: boolean) => void;
   setOriginCoordinate: (originCoordinate: Coordinate) => void;
-  toggleSavedSpot: (spotId: string) => void;
+  addUserSpot: (spot: UserZaturiSpot) => void;
+  removeUserSpot: (spotId: string) => void;
+  toggleSavedSpot: (spotId: string, spot?: TravelSpot) => void;
   clearSavedSpots: () => void;
   buildRecommendationInput: () => RecommendationInput;
+  buildNearbyRecommendationInput: () => NearbyRecommendationInput;
 };
 
 type PersistedTripState = Pick<
   TripState,
   | 'originName'
   | 'originCoordinate'
+  | 'nearbyBaseName'
+  | 'nearbyBaseCoordinate'
+  | 'nearbyMovementMode'
+  | 'nearbyIncludeReturn'
+  | 'userSpots'
   | 'destinationName'
   | 'destinationId'
   | 'destinationCoordinate'
@@ -49,12 +76,19 @@ type PersistedTripState = Pick<
   | 'needsBarrierFree'
   | 'prefersLowWalking'
   | 'savedSpotIds'
+  | 'savedSpotSnapshots'
 >;
 
 function toPersistedState(state: TripState): PersistedTripState {
   return {
     originName: state.originName,
     originCoordinate: state.originCoordinate,
+    nearbyBaseName: state.nearbyBaseName,
+    nearbyBaseCoordinate: state.nearbyBaseCoordinate,
+    nearbyMovementMode: state.nearbyMovementMode,
+    nearbyIncludeReturn: state.nearbyIncludeReturn,
+    userSpots: state.userSpots,
+    savedSpotSnapshots: state.savedSpotSnapshots,
     destinationName: state.destinationName,
     destinationId: state.destinationId,
     destinationCoordinate: state.destinationCoordinate,
@@ -91,7 +125,13 @@ export const useTripStore = create<TripState>((set, get) => {
     needsBarrierFree: false,
     prefersLowWalking: true,
     originCoordinate: defaultOrigin,
+    nearbyBaseName: '',
+    nearbyBaseCoordinate: defaultOrigin,
+    nearbyMovementMode: 'walk',
+    nearbyIncludeReturn: true,
+    userSpots: [],
     savedSpotIds: [],
+    savedSpotSnapshots: [],
     hydrated: false,
     hydrate: async () => {
       const raw = await AsyncStorage.getItem(storageKey);
@@ -107,6 +147,12 @@ export const useTripStore = create<TripState>((set, get) => {
       set({
         originName: parsed.originName ?? '',
         originCoordinate: parsed.originCoordinate ?? defaultOrigin,
+        nearbyBaseName: parsed.nearbyBaseName ?? '',
+        nearbyBaseCoordinate: parsed.nearbyBaseCoordinate ?? parsed.originCoordinate ?? defaultOrigin,
+        nearbyMovementMode: parsed.nearbyMovementMode ?? 'walk',
+        nearbyIncludeReturn: parsed.nearbyIncludeReturn ?? true,
+        userSpots: parsed.userSpots ?? [],
+        savedSpotSnapshots: parsed.savedSpotSnapshots ?? [],
         destinationName: parsed.destinationName ?? '',
         destinationId,
         destinationCoordinate: parsed.destinationCoordinate ?? fallbackDestination.coordinate,
@@ -136,21 +182,44 @@ export const useTripStore = create<TripState>((set, get) => {
       }),
     setOriginName: (originName) => commit({ originName }),
     setOriginPlace: (originName, originCoordinate) => commit({ originName, originCoordinate }),
+    setNearbyBasePlace: (nearbyBaseName, nearbyBaseCoordinate) => commit({ nearbyBaseName, nearbyBaseCoordinate }),
+    setNearbyMovementMode: (nearbyMovementMode) => commit({ nearbyMovementMode }),
+    setNearbyIncludeReturn: (nearbyIncludeReturn) => commit({ nearbyIncludeReturn }),
     setSpareMinutes: (spareMinutes) => commit({ spareMinutes }),
     setCompanion: (companion) => commit({ companion }),
     setWeather: (weather) => commit({ weather }),
     setNeedsBarrierFree: (needsBarrierFree) => commit({ needsBarrierFree }),
     setPrefersLowWalking: (prefersLowWalking) => commit({ prefersLowWalking }),
     setOriginCoordinate: (originCoordinate) => commit({ originCoordinate }),
-    toggleSavedSpot: (spotId) => {
+    addUserSpot: (spot) => {
       const state = get();
       commit({
-        savedSpotIds: state.savedSpotIds.includes(spotId)
-          ? state.savedSpotIds.filter((id) => id !== spotId)
-          : [...state.savedSpotIds, spotId],
+        userSpots: [spot, ...state.userSpots.filter((item) => item.id !== spot.id)],
+        savedSpotIds: state.savedSpotIds.includes(spot.id) ? state.savedSpotIds : [spot.id, ...state.savedSpotIds],
       });
     },
-    clearSavedSpots: () => commit({ savedSpotIds: [] }),
+    removeUserSpot: (spotId) => {
+      const state = get();
+      commit({
+        userSpots: state.userSpots.filter((spot) => spot.id !== spotId),
+        savedSpotIds: state.savedSpotIds.filter((id) => id !== spotId),
+        savedSpotSnapshots: state.savedSpotSnapshots.filter((spot) => spot.id !== spotId),
+      });
+    },
+    toggleSavedSpot: (spotId, spot) => {
+      const state = get();
+      const isSaved = state.savedSpotIds.includes(spotId);
+
+      commit({
+        savedSpotIds: isSaved ? state.savedSpotIds.filter((id) => id !== spotId) : [...state.savedSpotIds, spotId],
+        savedSpotSnapshots: isSaved
+          ? state.savedSpotSnapshots.filter((item) => item.id !== spotId)
+          : spot
+            ? [spot, ...state.savedSpotSnapshots.filter((item) => item.id !== spotId)]
+            : state.savedSpotSnapshots,
+      });
+    },
+    clearSavedSpots: () => commit({ savedSpotIds: [], savedSpotSnapshots: [] }),
     buildRecommendationInput: () => {
       const state = get();
 
@@ -165,6 +234,21 @@ export const useTripStore = create<TripState>((set, get) => {
         weather: state.weather,
         needsBarrierFree: state.needsBarrierFree,
         prefersLowWalking: state.prefersLowWalking,
+      };
+    },
+    buildNearbyRecommendationInput: () => {
+      const state = get();
+
+      return {
+        baseName: state.nearbyBaseName,
+        baseCoordinate: state.nearbyBaseCoordinate,
+        spareMinutes: state.spareMinutes,
+        movementMode: state.nearbyMovementMode,
+        companion: state.companion,
+        weather: state.weather,
+        needsBarrierFree: state.needsBarrierFree,
+        prefersLowWalking: state.prefersLowWalking,
+        includeReturnToBase: state.nearbyIncludeReturn,
       };
     },
   };

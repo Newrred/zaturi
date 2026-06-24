@@ -1,16 +1,19 @@
+import BottomSheet, { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
-import { useReducer } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Badge, Card, Chip, PrimaryButton, Screen, SecondaryButton, Section } from '@/components/ui';
-import { colors, radius, spacing } from '@/constants/theme';
-import type { CompanionType, WeatherPreference } from '@/domain/recommendation/types';
+import { PlannerMap } from '@/components/planner/PlannerMap';
+import { Chip, PrimaryButton, SecondaryButton } from '@/components/ui';
+import { colors, opacity, radius, shadow, spacing } from '@/constants/theme';
+import type { CompanionType, MovementMode, WeatherPreference } from '@/domain/recommendation/types';
 import type { PlaceSearchResult, PlaceSearchRole } from '@/services/routeProxy/client';
 import { searchRouteProxyPlaces } from '@/services/routeProxy/client';
 import { useTripStore } from '@/store/useTripStore';
 
-const timeOptions = [30, 45, 60, 90, 120];
+const timeOptions = [15, 30, 45, 60, 90, 120];
 const companions: Array<{ id: CompanionType; label: string }> = [
   { id: 'solo', label: '혼자' },
   { id: 'couple', label: '커플' },
@@ -22,12 +25,21 @@ const weatherOptions: Array<{ id: WeatherPreference; label: string }> = [
   { id: 'sunny', label: '맑은 날' },
   { id: 'rain', label: '비 예보' },
 ];
+const movementModes: Array<{ id: MovementMode; label: string }> = [
+  { id: 'walk', label: '도보' },
+  { id: 'car', label: '차량' },
+];
+
+type HomeMode = 'moving' | 'nearby';
+type PlannerStep = 'place' | 'time' | 'conditions';
 
 type SearchState = {
   originQuery: string;
   destinationQuery: string;
+  nearbyQuery: string;
   originResults: PlaceSearchResult[];
   destinationResults: PlaceSearchResult[];
+  nearbyResults: PlaceSearchResult[];
   searchingRole: PlaceSearchRole | null;
   message: string | null;
 };
@@ -38,47 +50,102 @@ type SearchAction =
   | { type: 'results'; role: PlaceSearchRole; results: PlaceSearchResult[]; message?: string | null }
   | { type: 'message'; message: string | null }
   | { type: 'select'; role: PlaceSearchRole; place: PlaceSearchResult }
-  | { type: 'currentLocation' };
+  | { type: 'currentLocation'; role: 'origin' | 'nearby' }
+  | { type: 'syncFromStore'; originName: string; destinationName: string; nearbyBaseName: string };
+
+function queryKeyForRole(role: PlaceSearchRole) {
+  if (role === 'origin') return 'originQuery';
+  if (role === 'destination') return 'destinationQuery';
+  return 'nearbyQuery';
+}
+
+function resultsKeyForRole(role: PlaceSearchRole) {
+  if (role === 'origin') return 'originResults';
+  if (role === 'destination') return 'destinationResults';
+  return 'nearbyResults';
+}
 
 function searchReducer(state: SearchState, action: SearchAction): SearchState {
   switch (action.type) {
     case 'query':
-      return action.role === 'origin'
-        ? { ...state, originQuery: action.value }
-        : { ...state, destinationQuery: action.value };
+      return { ...state, [queryKeyForRole(action.role)]: action.value };
     case 'start':
       return { ...state, searchingRole: action.role, message: null };
     case 'results':
-      return action.role === 'origin'
-        ? { ...state, originResults: action.results, searchingRole: null, message: action.message ?? null }
-        : { ...state, destinationResults: action.results, searchingRole: null, message: action.message ?? null };
+      return {
+        ...state,
+        [resultsKeyForRole(action.role)]: action.results,
+        searchingRole: null,
+        message: action.message ?? null,
+      };
     case 'message':
       return { ...state, searchingRole: null, message: action.message };
     case 'select':
-      return action.role === 'origin'
-        ? { ...state, originQuery: action.place.name, originResults: [], message: null }
-        : { ...state, destinationQuery: action.place.name, destinationResults: [], message: null };
+      return {
+        ...state,
+        [queryKeyForRole(action.role)]: action.place.name,
+        [resultsKeyForRole(action.role)]: [],
+        message: null,
+      };
     case 'currentLocation':
-      return { ...state, originQuery: '현재 위치', originResults: [], message: null };
+      return {
+        ...state,
+        [queryKeyForRole(action.role)]: '현재 위치',
+        [resultsKeyForRole(action.role)]: [],
+        message: null,
+      };
+    case 'syncFromStore':
+      return {
+        ...state,
+        originQuery: action.originName,
+        destinationQuery: action.destinationName,
+        nearbyQuery: action.nearbyBaseName,
+      };
     default:
       return state;
   }
 }
 
+function matchesConfirmedPlace(query: string, selectedName: string) {
+  return selectedName.trim().length > 0 && query.trim() === selectedName.trim();
+}
+
 export default function HomeScreen() {
   const store = useTripStore();
+  const insets = useSafeAreaInsets();
+  const sheetRef = useRef<BottomSheet>(null);
+  const [mode, setMode] = useState<HomeMode>('moving');
+  const [step, setStep] = useState<PlannerStep>('place');
   const [searchState, dispatchSearch] = useReducer(searchReducer, {
     originQuery: store.originName,
     destinationQuery: store.destinationName,
+    nearbyQuery: store.nearbyBaseName,
     originResults: [],
     destinationResults: [],
+    nearbyResults: [],
     searchingRole: null,
     message: null,
   });
-  const canRecommend = store.originName.trim().length > 0 && store.destinationName.trim().length > 0;
+  const snapPoints = useMemo(() => ['28%', '58%', '88%'], []);
+  const originConfirmed = matchesConfirmedPlace(searchState.originQuery, store.originName);
+  const destinationConfirmed = matchesConfirmedPlace(searchState.destinationQuery, store.destinationName);
+  const nearbyConfirmed = matchesConfirmedPlace(searchState.nearbyQuery, store.nearbyBaseName);
+  const canContinueFromPlace = mode === 'moving' ? originConfirmed && destinationConfirmed : nearbyConfirmed;
+  const canStart = canContinueFromPlace && store.spareMinutes > 0;
+
+  useEffect(() => {
+    if (!store.hydrated) return;
+
+    dispatchSearch({
+      type: 'syncFromStore',
+      originName: store.originName,
+      destinationName: store.destinationName,
+      nearbyBaseName: store.nearbyBaseName,
+    });
+  }, [store.destinationName, store.hydrated, store.nearbyBaseName, store.originName]);
 
   async function runPlaceSearch(role: PlaceSearchRole) {
-    const query = role === 'origin' ? searchState.originQuery.trim() : searchState.destinationQuery.trim();
+    const query = String(searchState[queryKeyForRole(role)]).trim();
 
     if (query.length < 2) {
       dispatchSearch({ type: 'message', message: '두 글자 이상 입력하면 검색할 수 있어요.' });
@@ -89,7 +156,16 @@ export default function HomeScreen() {
 
     try {
       const response = await searchRouteProxyPlaces(query, role);
-      const results = response?.results ?? [];
+
+      if (!response) {
+        dispatchSearch({
+          type: 'message',
+          message: '장소 검색 서버 URL이 설정되지 않았어요. .env의 EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL을 확인해주세요.',
+        });
+        return;
+      }
+
+      const results = response.results ?? [];
       const message = results.length === 0 ? '검색 결과가 없어요. 관광지 이름이나 주소를 조금 더 구체적으로 입력해보세요.' : null;
       dispatchSearch({ type: 'results', role, results, message });
     } catch {
@@ -104,193 +180,376 @@ export default function HomeScreen() {
       return;
     }
 
-    store.setDestinationPlace(place.name, place.coordinate, place.id);
+    if (role === 'destination') {
+      store.setDestinationPlace(place.name, place.coordinate, place.id);
+      dispatchSearch({ type: 'select', role, place });
+      return;
+    }
+
+    store.setNearbyBasePlace(place.name, place.coordinate);
     dispatchSearch({ type: 'select', role, place });
   }
 
-  async function useCurrentLocation() {
+  async function applyCurrentLocation(role: 'origin' | 'nearby') {
     if (Platform.OS === 'web') {
-      Alert.alert('현재 위치를 쓸 수 없어요', '웹에서는 장소 검색으로 출발지를 선택해주세요.');
+      Alert.alert('현재 위치를 쓸 수 없어요', '웹에서는 장소 검색으로 기준 위치를 선택해주세요.');
       return;
     }
 
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (permission.status !== 'granted') {
-      Alert.alert('위치 권한이 필요해요', '검색 결과에서 출발지를 선택해주세요.');
-      return;
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert('위치 권한이 필요해요', '검색 결과에서 위치를 선택해주세요.');
+        return;
+      }
+
+      const current = await Location.getCurrentPositionAsync({});
+      const coordinate = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+      };
+
+      if (role === 'origin') {
+        store.setOriginPlace('현재 위치', coordinate);
+      } else {
+        store.setNearbyBasePlace('현재 위치', coordinate);
+      }
+      dispatchSearch({ type: 'currentLocation', role });
+    } catch {
+      Alert.alert('현재 위치를 확인하지 못했어요', '장소 검색으로 기준 위치를 선택해주세요.');
     }
-
-    const current = await Location.getCurrentPositionAsync({});
-    const coordinate = {
-      latitude: current.coords.latitude,
-      longitude: current.coords.longitude,
-    };
-
-    store.setOriginPlace('현재 위치', coordinate);
-    dispatchSearch({ type: 'currentLocation' });
   }
 
-  function goToRecommendations() {
-    if (!canRecommend) {
-      Alert.alert('출발지와 목적지를 선택해주세요', '검색 결과에서 출발지와 목적지를 하나씩 선택하면 추천을 계산할 수 있어요.');
+  function openPlanner(nextStep: PlannerStep = 'place') {
+    setStep(nextStep);
+    sheetRef.current?.snapToIndex(1);
+  }
+
+  function closePlanner() {
+    sheetRef.current?.close();
+  }
+
+  function changeMode(nextMode: HomeMode) {
+    setMode(nextMode);
+    setStep('place');
+    sheetRef.current?.snapToIndex(1);
+  }
+
+  async function handleCurrentNearbyBase() {
+    setMode('nearby');
+    setStep('place');
+    sheetRef.current?.snapToIndex(1);
+    await applyCurrentLocation('nearby');
+  }
+
+  function nextFromPlace() {
+    if (!canContinueFromPlace) {
+      Alert.alert(
+        mode === 'moving' ? '출발지와 목적지를 확정해주세요' : '기준 위치를 확정해주세요',
+        '검색 결과에서 장소를 선택해야 좌표 기준으로 추천할 수 있어요.',
+      );
+      return;
+    }
+    setStep('time');
+    sheetRef.current?.snapToIndex(1);
+  }
+
+  function startJourney() {
+    if (!canStart) {
+      nextFromPlace();
       return;
     }
 
-    router.push('/recommendations');
+    router.push(mode === 'moving' ? '/recommendations' : '/nearby');
   }
 
   return (
-    <Screen
-      footer={
-        <PrimaryButton
-          label={canRecommend ? '실제 경로로 추천 보기' : '출발지와 목적지를 선택해주세요'}
-          onPress={goToRecommendations}
-        />
-      }
-    >
-      <View style={styles.hero}>
-        <Badge label="강원 자가용 여행 MVP" tone="blue" />
-        <Text style={styles.title}>자투리여행</Text>
-        <Text style={styles.description}>출발지와 목적지를 기준으로 실제 경유 시간이 납득되는 짧은 여행 후보를 비교합니다.</Text>
+    <View style={styles.root}>
+      <PlannerMap
+        accessibilityLabel="자투리여행 탐색 지도"
+        baseCoordinate={mode === 'nearby' && nearbyConfirmed ? store.nearbyBaseCoordinate : null}
+        destinationCoordinate={mode === 'moving' && destinationConfirmed ? store.destinationCoordinate : null}
+        interactive
+        originCoordinate={mode === 'moving' && originConfirmed ? store.originCoordinate : null}
+        testID="planner-map"
+      />
+
+      <View pointerEvents="none" style={styles.centerPinHalo}>
+        <View style={styles.centerPin} />
       </View>
 
-      <Section title="출발 · 목적지">
-        <Card>
-          <PlaceSearchField
-            label="출발지"
-            placeholder="예: 서울시청, 하남검단산역, 현재 주소"
-            value={searchState.originQuery}
-            selectedName={store.originName}
-            results={searchState.originResults}
-            isLoading={searchState.searchingRole === 'origin'}
-            onChangeText={(value) => dispatchSearch({ type: 'query', role: 'origin', value })}
-            onSearch={() => void runPlaceSearch('origin')}
-            onSelect={(place) => selectPlace('origin', place)}
-          />
+      <SafeAreaView pointerEvents="box-none" style={StyleSheet.absoluteFillObject}>
+        <View style={[styles.topBar, { paddingTop: Math.max(insets.top, spacing.md) }]}>
+          <Pressable accessibilityRole="button" style={styles.searchBar} onPress={() => openPlanner('place')}>
+            <Text style={styles.searchIcon}>⌕</Text>
+            <Text style={styles.searchText}>탐색 위치 검색</Text>
+          </Pressable>
+        </View>
 
-          <View style={styles.locationActionRow}>
-            <SecondaryButton label="현재 위치로 출발" onPress={useCurrentLocation} />
-          </View>
+        <View style={styles.floatingStack}>
+          <Pressable accessibilityLabel="내 자투리 스팟 추가" accessibilityRole="button" style={styles.primaryFab} onPress={() => router.push('/spot/new')}>
+            <Text style={styles.primaryFabText}>+</Text>
+          </Pressable>
+          <Pressable accessibilityLabel="현재 위치 기준 탐색" accessibilityRole="button" style={styles.fab} onPress={() => void handleCurrentNearbyBase()}>
+            <Text style={styles.fabText}>◎</Text>
+          </Pressable>
+        </View>
 
-          <PlaceSearchField
-            label="목적지"
-            placeholder="예: 속초 중앙시장, 오죽헌, 강릉 커피거리"
-            value={searchState.destinationQuery}
-            selectedName={store.destinationName}
-            results={searchState.destinationResults}
-            isLoading={searchState.searchingRole === 'destination'}
-            onChangeText={(value) => dispatchSearch({ type: 'query', role: 'destination', value })}
-            onSearch={() => void runPlaceSearch('destination')}
-            onSelect={(place) => selectPlace('destination', place)}
-          />
+        <View style={[styles.homeCtaWrap, { bottom: 100 + Math.max(insets.bottom, 0) }]}>
+          <PrimaryButton label="틈새 탐색 시작" onPress={() => openPlanner('place')} />
+        </View>
+
+        <View style={[styles.bottomTabs, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+          <PlannerTab active icon="◉" label="틈새 탐색" onPress={() => openPlanner('place')} />
+          <PlannerTab icon="☷" label="자투리 저장소" onPress={() => router.push('/saved')} />
+          <PlannerTab icon="⚙" label="설정" onPress={() => router.push('/settings')} />
+        </View>
+      </SafeAreaView>
+
+      <BottomSheet
+        ref={sheetRef}
+        backgroundStyle={styles.sheetBackground}
+        enableDynamicSizing={false}
+        enablePanDownToClose
+        handleIndicatorStyle={styles.sheetHandle}
+        index={-1}
+        keyboardBehavior="interactive"
+        snapPoints={snapPoints}
+      >
+        <BottomSheetScrollView contentContainerStyle={styles.sheetContent}>
+          <ModeSelector mode={mode} onChangeMode={changeMode} />
+
+          {step === 'place' ? (
+            <PlaceStep
+              mode={mode}
+              searchState={searchState}
+              originConfirmed={originConfirmed}
+              destinationConfirmed={destinationConfirmed}
+              nearbyConfirmed={nearbyConfirmed}
+              onApplyCurrentLocation={applyCurrentLocation}
+              onChangeText={(role, value) => dispatchSearch({ type: 'query', role, value })}
+              onClose={closePlanner}
+              onNext={nextFromPlace}
+              onSearch={runPlaceSearch}
+              onSelectPlace={selectPlace}
+            />
+          ) : null}
+
+          {step === 'time' ? (
+            <TimeStep
+              spareMinutes={store.spareMinutes}
+              onBack={() => setStep('place')}
+              onNext={() => setStep('conditions')}
+              onSetSpareMinutes={store.setSpareMinutes}
+            />
+          ) : null}
+
+          {step === 'conditions' ? (
+            <ConditionStep
+              mode={mode}
+              companion={store.companion}
+              weather={store.weather}
+              movementMode={store.nearbyMovementMode}
+              needsBarrierFree={store.needsBarrierFree}
+              prefersLowWalking={store.prefersLowWalking}
+              includeReturn={store.nearbyIncludeReturn}
+              onBack={() => setStep('time')}
+              onSetCompanion={store.setCompanion}
+              onSetIncludeReturn={store.setNearbyIncludeReturn}
+              onSetMovementMode={store.setNearbyMovementMode}
+              onSetNeedsBarrierFree={store.setNeedsBarrierFree}
+              onSetPrefersLowWalking={store.setPrefersLowWalking}
+              onSetWeather={store.setWeather}
+              onStart={startJourney}
+            />
+          ) : null}
 
           {searchState.message ? <Text style={styles.messageText}>{searchState.message}</Text> : null}
-
-          <View style={styles.routeStatusRow}>
-            <View style={styles.routeStatusCopy}>
-              <Text style={styles.cardTitle}>
-                {store.originName || '출발지 선택 필요'} → {store.destinationName || '목적지 선택 필요'}
-              </Text>
-              <Text style={styles.cardText}>선택한 두 좌표를 기준으로 기본 경로와 관광 경유 경로를 비교합니다.</Text>
-            </View>
-            <Badge label={canRecommend ? '좌표 확정' : '검색 필요'} tone={canRecommend ? 'green' : 'amber'} />
-          </View>
-        </Card>
-      </Section>
-
-      <Section title="남는 시간">
-        <View style={styles.chipGrid}>
-          {timeOptions.map((minutes) => (
-            <Chip key={minutes} label={`${minutes}분`} selected={store.spareMinutes === minutes} onPress={() => store.setSpareMinutes(minutes)} />
-          ))}
-        </View>
-      </Section>
-
-      <Section title="상황 조건">
-        <View style={styles.chipGrid}>
-          {companions.map((item) => (
-            <Chip key={item.id} label={item.label} selected={store.companion === item.id} onPress={() => store.setCompanion(item.id)} />
-          ))}
-        </View>
-        <View style={styles.chipGrid}>
-          {weatherOptions.map((item) => (
-            <Chip key={item.id} label={item.label} selected={store.weather === item.id} onPress={() => store.setWeather(item.id)} />
-          ))}
-        </View>
-        <View style={styles.chipGrid}>
-          <Chip label="보행 적게" selected={store.prefersLowWalking} onPress={() => store.setPrefersLowWalking(!store.prefersLowWalking)} />
-          <Chip label="접근성 우선" selected={store.needsBarrierFree} onPress={() => store.setNeedsBarrierFree(!store.needsBarrierFree)} />
-        </View>
-      </Section>
-
-      <View style={styles.quickLinks}>
-        <SecondaryButton label="저장한 장소" onPress={() => router.push('/saved')} />
-        <SecondaryButton label="설정" onPress={() => router.push('/settings')} />
-      </View>
-    </Screen>
+        </BottomSheetScrollView>
+      </BottomSheet>
+    </View>
   );
 }
 
-function PlaceSearchField({
-  label,
-  placeholder,
-  value,
-  selectedName,
-  results,
+function PlannerTab({ active = false, icon, label, onPress }: { active?: boolean; icon: string; label: string; onPress: () => void }) {
+  return (
+    <Pressable accessibilityRole="button" style={styles.tab} onPress={onPress}>
+      <Text style={[styles.tabIcon, active && styles.tabActive]}>{icon}</Text>
+      <Text style={[styles.tabLabel, active && styles.tabActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function ModeSelector({ mode, onChangeMode }: { mode: HomeMode; onChangeMode: (mode: HomeMode) => void }) {
+  return (
+    <View style={styles.segmented}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: mode === 'moving' }}
+        style={[styles.segment, mode === 'moving' && styles.segmentActive]}
+        onPress={() => onChangeMode('moving')}
+      >
+        <Text style={styles.segmentIcon}>◇</Text>
+        <Text style={styles.segmentText}>이동 자투리 탐색</Text>
+      </Pressable>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ selected: mode === 'nearby' }}
+        style={[styles.segment, mode === 'nearby' && styles.segmentActive]}
+        onPress={() => onChangeMode('nearby')}
+      >
+        <Text style={styles.segmentIcon}>●</Text>
+        <Text style={styles.segmentText}>근처 자투리 탐색</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function PlaceStep({
+  mode,
+  searchState,
+  originConfirmed,
+  destinationConfirmed,
+  nearbyConfirmed,
+  onApplyCurrentLocation,
+  onChangeText,
+  onClose,
+  onNext,
+  onSearch,
+  onSelectPlace,
+}: {
+  mode: HomeMode;
+  searchState: SearchState;
+  originConfirmed: boolean;
+  destinationConfirmed: boolean;
+  nearbyConfirmed: boolean;
+  onApplyCurrentLocation: (role: 'origin' | 'nearby') => Promise<void>;
+  onChangeText: (role: PlaceSearchRole, value: string) => void;
+  onClose: () => void;
+  onNext: () => void;
+  onSearch: (role: PlaceSearchRole) => Promise<void>;
+  onSelectPlace: (role: PlaceSearchRole, place: PlaceSearchResult) => void;
+}) {
+  return (
+    <View style={styles.stepGroup}>
+      <Text style={styles.sheetTitle}>{mode === 'moving' ? '지금 어디로 가는 길인가요?' : '지금 어디에 있나요?'}</Text>
+      {mode === 'moving' ? (
+        <View style={styles.routeInputCard}>
+          <SheetPlaceSearchField
+            confirmed={originConfirmed}
+            isLoading={searchState.searchingRole === 'origin'}
+            placeholder="서울역"
+            results={searchState.originResults}
+            searchRole="origin"
+            value={searchState.originQuery}
+            onApplyCurrentLocation={() => void onApplyCurrentLocation('origin')}
+            onChangeText={(value) => onChangeText('origin', value)}
+            onSearch={() => void onSearch('origin')}
+            onSelect={(place) => onSelectPlace('origin', place)}
+          />
+          <View style={styles.routeDivider} />
+          <SheetPlaceSearchField
+            confirmed={destinationConfirmed}
+            isLoading={searchState.searchingRole === 'destination'}
+            placeholder="강릉 안목해변"
+            results={searchState.destinationResults}
+            searchRole="destination"
+            value={searchState.destinationQuery}
+            onChangeText={(value) => onChangeText('destination', value)}
+            onSearch={() => void onSearch('destination')}
+            onSelect={(place) => onSelectPlace('destination', place)}
+          />
+        </View>
+      ) : (
+        <View style={styles.routeInputCard}>
+          <SheetPlaceSearchField
+            confirmed={nearbyConfirmed}
+            isLoading={searchState.searchingRole === 'nearby'}
+            placeholder="강릉역, 속초 숙소"
+            results={searchState.nearbyResults}
+            searchRole="nearby"
+            value={searchState.nearbyQuery}
+            onApplyCurrentLocation={() => void onApplyCurrentLocation('nearby')}
+            onChangeText={(value) => onChangeText('nearby', value)}
+            onSearch={() => void onSearch('nearby')}
+            onSelect={(place) => onSelectPlace('nearby', place)}
+          />
+        </View>
+      )}
+      <View style={styles.sheetActions}>
+        <SecondaryButton label="닫기" onPress={onClose} />
+        <PrimaryButton label="다음" onPress={onNext} />
+      </View>
+    </View>
+  );
+}
+
+function SheetPlaceSearchField({
+  confirmed,
   isLoading,
+  placeholder,
+  results,
+  searchRole,
+  value,
+  onApplyCurrentLocation,
   onChangeText,
   onSearch,
   onSelect,
 }: {
-  label: string;
-  placeholder: string;
-  value: string;
-  selectedName: string;
-  results: PlaceSearchResult[];
+  confirmed: boolean;
   isLoading: boolean;
+  placeholder: string;
+  results: PlaceSearchResult[];
+  searchRole: PlaceSearchRole;
+  value: string;
+  onApplyCurrentLocation?: () => void;
   onChangeText: (value: string) => void;
   onSearch: () => void;
   onSelect: (place: PlaceSearchResult) => void;
 }) {
   return (
-    <View style={styles.fieldGroup}>
-      <View style={styles.fieldHeader}>
-        <Text style={styles.fieldLabel}>{label}</Text>
-        {selectedName ? <Badge label="선택됨" tone="blue" /> : null}
-      </View>
-      <View style={styles.searchRow}>
+    <View style={styles.placeField}>
+      <View style={styles.placeInputRow}>
+        <View
+          style={[
+            styles.routeDot,
+            searchRole === 'destination' && styles.destinationDot,
+            searchRole === 'nearby' && styles.nearbyDot,
+          ]}
+        />
         <TextInput
-          accessibilityLabel={label}
           autoCapitalize="none"
           onChangeText={onChangeText}
           onSubmitEditing={onSearch}
           placeholder={placeholder}
           placeholderTextColor={colors.inkFaint}
           returnKeyType="search"
-          style={styles.input}
+          style={styles.placeInput}
           value={value}
         />
-        <SecondaryButton label="검색" onPress={onSearch} />
+        {onApplyCurrentLocation ? (
+          <Pressable accessibilityRole="button" style={styles.currentLocationPill} onPress={onApplyCurrentLocation}>
+            <Text style={styles.currentLocationText}>현위치</Text>
+          </Pressable>
+        ) : null}
+        <Pressable accessibilityRole="button" style={styles.searchSmallButton} onPress={onSearch}>
+          <Text style={styles.searchSmallButtonText}>검색</Text>
+        </Pressable>
       </View>
+      <Text style={[styles.confirmationText, confirmed && styles.confirmedText]}>{confirmed ? '좌표 확정됨' : '검색 결과에서 장소를 선택해야 합니다'}</Text>
       {isLoading ? (
         <View style={styles.inlineLoading}>
           <ActivityIndicator color={colors.primary} />
-          <Text style={styles.cardText}>검색 중</Text>
+          <Text style={styles.metaText}>검색 중</Text>
         </View>
       ) : null}
       {results.length > 0 ? (
         <View style={styles.resultList}>
           {results.map((place) => (
-            <Pressable
-              key={place.id}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.resultItem, pressed && styles.pressed]}
-              onPress={() => onSelect(place)}
-            >
+            <Pressable key={place.id} accessibilityRole="button" style={styles.resultItem} onPress={() => onSelect(place)}>
               <View style={styles.resultTextColumn}>
                 <Text style={styles.resultTitle}>{place.name}</Text>
                 <Text style={styles.resultAddress}>{place.address}</Text>
-                <Text style={styles.resultMeta}>{place.sourceLabel} · {place.categoryLabel}</Text>
               </View>
               <Text style={styles.resultAction}>선택</Text>
             </Pressable>
@@ -301,66 +560,386 @@ function PlaceSearchField({
   );
 }
 
+function TimeStep({
+  spareMinutes,
+  onBack,
+  onNext,
+  onSetSpareMinutes,
+}: {
+  spareMinutes: number;
+  onBack: () => void;
+  onNext: () => void;
+  onSetSpareMinutes: (minutes: number) => void;
+}) {
+  return (
+    <View style={styles.stepGroup}>
+      <Text style={styles.sheetTitle}>남는 자투리 시간은 얼마나 될까요?</Text>
+      <View style={styles.timeLabels}>
+        <Text style={styles.timeLabel}>15분</Text>
+        <Text style={styles.timeLabel}>30분</Text>
+        <Text style={styles.timeLabel}>1시간</Text>
+        <Text style={styles.timeLabel}>2시간</Text>
+      </View>
+      <View style={styles.timeTrack}>
+        {timeOptions.map((minutes) => (
+          <Pressable
+            key={minutes}
+            accessibilityLabel={`${minutes}분 선택`}
+            accessibilityRole="button"
+            accessibilityState={{ selected: spareMinutes === minutes }}
+            style={[styles.timeTick, spareMinutes === minutes && styles.timeTickActive]}
+            onPress={() => onSetSpareMinutes(minutes)}
+          />
+        ))}
+      </View>
+      <View style={styles.timeInputBox}>
+        <TextInput
+          keyboardType="number-pad"
+          onChangeText={(value) => {
+            const parsed = Number(value.replace(/[^0-9]/g, ''));
+            if (Number.isFinite(parsed) && parsed > 0) onSetSpareMinutes(Math.min(240, parsed));
+          }}
+          style={styles.timeInput}
+          value={`${spareMinutes} 분`}
+        />
+      </View>
+      <View style={styles.sheetActions}>
+        <SecondaryButton label="이전" onPress={onBack} />
+        <PrimaryButton label="다음" onPress={onNext} />
+      </View>
+    </View>
+  );
+}
+
+function ConditionStep({
+  mode,
+  companion,
+  weather,
+  movementMode,
+  needsBarrierFree,
+  prefersLowWalking,
+  includeReturn,
+  onBack,
+  onSetCompanion,
+  onSetIncludeReturn,
+  onSetMovementMode,
+  onSetNeedsBarrierFree,
+  onSetPrefersLowWalking,
+  onSetWeather,
+  onStart,
+}: {
+  mode: HomeMode;
+  companion: CompanionType;
+  weather: WeatherPreference;
+  movementMode: MovementMode;
+  needsBarrierFree: boolean;
+  prefersLowWalking: boolean;
+  includeReturn: boolean;
+  onBack: () => void;
+  onSetCompanion: (value: CompanionType) => void;
+  onSetIncludeReturn: (value: boolean) => void;
+  onSetMovementMode: (value: MovementMode) => void;
+  onSetNeedsBarrierFree: (value: boolean) => void;
+  onSetPrefersLowWalking: (value: boolean) => void;
+  onSetWeather: (value: WeatherPreference) => void;
+  onStart: () => void;
+}) {
+  return (
+    <View style={styles.stepGroup}>
+      <Text style={styles.sheetTitle}>어떤 틈새 여정이 좋을까요?</Text>
+      <Text style={styles.metaText}>추천 품질에 영향 주는 조건만 빠르게 고릅니다.</Text>
+      <View style={styles.chipGrid}>
+        {companions.map((item) => (
+          <Chip key={item.id} label={item.label} selected={companion === item.id} onPress={() => onSetCompanion(item.id)} />
+        ))}
+      </View>
+      <View style={styles.chipGrid}>
+        {weatherOptions.map((item) => (
+          <Chip key={item.id} label={item.label} selected={weather === item.id} onPress={() => onSetWeather(item.id)} />
+        ))}
+      </View>
+      {mode === 'nearby' ? (
+        <View style={styles.chipGrid}>
+          {movementModes.map((item) => (
+            <Chip key={item.id} label={item.label} selected={movementMode === item.id} onPress={() => onSetMovementMode(item.id)} />
+          ))}
+          <Chip label="원위치 복귀 포함" selected={includeReturn} onPress={() => onSetIncludeReturn(!includeReturn)} />
+        </View>
+      ) : null}
+      <View style={styles.chipGrid}>
+        <Chip label="보행 적게" selected={prefersLowWalking} onPress={() => onSetPrefersLowWalking(!prefersLowWalking)} />
+        <Chip label="접근성 우선" selected={needsBarrierFree} onPress={() => onSetNeedsBarrierFree(!needsBarrierFree)} />
+      </View>
+      <View style={styles.sheetActions}>
+        <SecondaryButton label="이전" onPress={onBack} />
+        <PrimaryButton label="틈새 여정 시작하기" onPress={onStart} />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  hero: {
-    gap: spacing.md,
-    paddingVertical: spacing.md,
+  root: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  title: {
+  topBar: {
+    paddingHorizontal: spacing.lg,
+  },
+  searchBar: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceOverlayStrong,
+    paddingHorizontal: spacing.lg,
+    ...shadow.md,
+  },
+  searchIcon: {
     color: colors.ink,
-    fontSize: 34,
+    fontSize: 40,
+    fontWeight: '900',
+    lineHeight: 42,
+  },
+  searchText: {
+    color: colors.inkFaint,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  centerPinHalo: {
+    position: 'absolute',
+    left: '50%',
+    top: '50%',
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: -24,
+    marginTop: -24,
+    borderRadius: 24,
+    backgroundColor: colors.overlayWarm,
+  },
+  centerPin: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.primary,
+  },
+  floatingStack: {
+    position: 'absolute',
+    right: spacing.lg,
+    bottom: 210,
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  primaryFab: {
+    width: 68,
+    height: 68,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 34,
+    backgroundColor: colors.primary,
+    ...shadow.md,
+  },
+  primaryFabText: {
+    color: colors.onPrimary,
+    fontSize: 42,
+    fontWeight: '500',
+    lineHeight: 46,
+  },
+  fab: {
+    width: 62,
+    height: 62,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 31,
+    backgroundColor: colors.surfaceOverlayStrong,
+    ...shadow.sm,
+  },
+  fabText: {
+    color: colors.ink,
+    fontSize: 38,
     fontWeight: '900',
     lineHeight: 40,
   },
-  description: {
-    color: colors.inkMuted,
-    fontSize: 16,
-    lineHeight: 24,
+  homeCtaWrap: {
+    position: 'absolute',
+    left: spacing.xl,
+    right: spacing.xl,
   },
-  fieldGroup: {
-    gap: spacing.sm,
-  },
-  fieldHeader: {
+  bottomTabs: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: 88,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
+    justifyContent: 'space-around',
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    backgroundColor: colors.surfaceOverlayStrong,
+    paddingTop: spacing.md,
+    ...shadow.md,
   },
-  fieldLabel: {
-    color: colors.ink,
+  tab: {
+    minWidth: 92,
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  tabIcon: {
+    color: colors.inkFaint,
+    fontSize: 26,
+    fontWeight: '900',
+  },
+  tabLabel: {
+    color: colors.inkFaint,
     fontSize: 13,
     fontWeight: '800',
   },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: spacing.sm,
+  tabActive: {
+    color: colors.ink,
   },
-  input: {
-    minHeight: 46,
-    minWidth: 0,
-    flex: 1,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
+  sheetBackground: {
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
     backgroundColor: colors.surface,
+  },
+  sheetHandle: {
+    backgroundColor: colors.borderStrong,
+    width: 48,
+  },
+  sheetContent: {
+    gap: spacing.lg,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xxl,
+  },
+  segmented: {
+    flexDirection: 'row',
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.xs,
+    gap: spacing.xs,
+  },
+  segment: {
+    minHeight: 68,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    borderRadius: radius.md,
+  },
+  segmentActive: {
+    backgroundColor: colors.surface,
+    ...shadow.sm,
+  },
+  segmentIcon: {
+    color: colors.ink,
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  segmentText: {
     color: colors.ink,
     fontSize: 16,
-    fontWeight: '700',
-    paddingHorizontal: spacing.md,
+    fontWeight: '900',
   },
-  locationActionRow: {
-    alignItems: 'flex-start',
+  stepGroup: {
+    gap: spacing.lg,
+  },
+  sheetTitle: {
+    color: colors.ink,
+    fontSize: 30,
+    fontWeight: '900',
+    lineHeight: 38,
+  },
+  routeInputCard: {
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceMuted,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  routeDivider: {
+    height: 1,
+    marginLeft: spacing.xl,
+    backgroundColor: colors.border,
+  },
+  placeField: {
+    gap: spacing.sm,
+  },
+  placeInputRow: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  routeDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.inkFaint,
+  },
+  destinationDot: {
+    backgroundColor: colors.primary,
+  },
+  nearbyDot: {
+    backgroundColor: colors.blue,
+  },
+  placeInput: {
+    minWidth: 0,
+    flex: 1,
+    color: colors.ink,
+    fontSize: 17,
+    fontWeight: '900',
+    paddingVertical: spacing.sm,
+  },
+  currentLocationPill: {
+    borderRadius: radius.sm,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  currentLocationText: {
+    color: colors.onPrimary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  searchSmallButton: {
+    borderRadius: radius.sm,
+    borderColor: colors.border,
+    borderWidth: 1,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  searchSmallButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  confirmationText: {
+    color: colors.inkFaint,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  confirmedText: {
+    color: colors.success,
   },
   inlineLoading: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
+  metaText: {
+    color: colors.inkMuted,
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
+  },
   messageText: {
     color: colors.danger,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '800',
     lineHeight: 19,
   },
   resultList: {
@@ -370,10 +949,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
+    backgroundColor: colors.surface,
     padding: spacing.md,
   },
   resultTextColumn: {
@@ -392,14 +969,56 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
-  resultMeta: {
-    color: colors.primaryDark,
-    fontSize: 12,
-    fontWeight: '800',
-  },
   resultAction: {
     color: colors.primary,
     fontSize: 13,
+    fontWeight: '900',
+  },
+  timeLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  timeLabel: {
+    color: colors.inkMuted,
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  timeTrack: {
+    height: 46,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+    paddingHorizontal: spacing.sm,
+  },
+  timeTick: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.border,
+  },
+  timeTickActive: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.surface,
+    borderColor: colors.primary,
+    borderWidth: 4,
+    ...shadow.sm,
+  },
+  timeInputBox: {
+    minHeight: 72,
+    justifyContent: 'center',
+    borderRadius: radius.md,
+    borderColor: colors.border,
+    borderWidth: 1,
+    backgroundColor: colors.surface,
+    paddingHorizontal: spacing.lg,
+  },
+  timeInput: {
+    color: colors.ink,
+    fontSize: 22,
     fontWeight: '900',
   },
   chipGrid: {
@@ -407,32 +1026,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
   },
-  routeStatusRow: {
+  sheetActions: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
     gap: spacing.md,
-  },
-  routeStatusCopy: {
-    minWidth: 190,
-    flex: 1,
-    gap: spacing.xs,
-  },
-  cardTitle: {
-    color: colors.ink,
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  cardText: {
-    color: colors.inkMuted,
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  quickLinks: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  pressed: {
-    opacity: 0.76,
   },
 });

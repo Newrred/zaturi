@@ -13,6 +13,7 @@ export type ZaturiKakaoMapViewProps = {
   longitude: number;
   title?: string;
   subtitle?: string;
+  markersJson?: string;
   zoomLevel?: number;
   onMapReady?: () => void;
   onMapError?: (event: NativeSyntheticEvent<ZaturiKakaoMapErrorEvent>) => void;

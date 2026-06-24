@@ -1,0 +1,28 @@
+appId: com.zaturi.app
+---
+- clearState
+- launchApp
+- assertVisible: "틈새 탐색"
+- tapOn: "자투리 저장소"
+- assertVisible: "저장한 자투리 스팟"
+- tapOn: "내 스팟 추가"
+- assertVisible: "내 자투리 스팟 추가"
+- tapOn: "예: 숙소 앞 조용한 산책로"
+- inputText: "Maestro Test Spot"
+- hideKeyboard
+- tapOn: "장소를 다시 찾을 수 있는 설명"
+- inputText: "Maestro test memo"
+- hideKeyboard
+- tapOn: "예: 강릉, 속초, 내 주변"
+- inputText: "Gangneung"
+- hideKeyboard
+- tapOn: "어떤 남는 시간에 쓰기 좋은 장소인지"
+- inputText: "Created by Maestro smoke flow"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "내 스팟 저장"
+    direction: DOWN
+- tapOn: "내 스팟 저장"
+- assertVisible: "저장한 자투리 스팟"
+- assertVisible: "Maestro Test Spot"

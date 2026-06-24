@@ -3,7 +3,7 @@ import type { CandidateRoutePlan } from '@/domain/routing/types';
 
 const routeProxyUrl = process.env.EXPO_PUBLIC_ZATURI_ROUTE_PROXY_URL?.trim();
 
-export type PlaceSearchRole = 'origin' | 'destination';
+export type PlaceSearchRole = 'origin' | 'destination' | 'nearby';
 
 export type PlaceSearchResult = {
   id: string;

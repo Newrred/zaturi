@@ -1,7 +1,8 @@
 import { mockSpots } from '@/data/mockSpots';
 import { buildWaypointRouteSummary, getKakaoCandidateRoutePlan } from '@/domain/routing/kakaoRoutePlanner';
 import type { SpotRouteAssessment } from '@/domain/routing/types';
-import type { RecommendationBundle, RecommendationInput, RecommendationResult, TravelSpot } from './types';
+import { getCandidateSpots } from './userSpots';
+import type { RecommendationBundle, RecommendationInput, RecommendationResult, SavedSpotSnapshot, TravelSpot, UserZaturiSpot } from './types';
 
 let latestCandidateSpots: TravelSpot[] = mockSpots;
 
@@ -77,15 +78,16 @@ function clampScore(score: number) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
-export async function getRecommendationBundles(input: RecommendationInput): Promise<RecommendationBundle[]> {
-  const result = await getRecommendationResult(input);
+export async function getRecommendationBundles(input: RecommendationInput, userSpots: UserZaturiSpot[] = []): Promise<RecommendationBundle[]> {
+  const result = await getRecommendationResult(input, userSpots);
 
   return result.bundles;
 }
 
-export async function getRecommendationResult(input: RecommendationInput): Promise<RecommendationResult> {
-  const candidateRoutePlan = await getKakaoCandidateRoutePlan(input, mockSpots);
-  const candidateSpots = candidateRoutePlan.spots && candidateRoutePlan.spots.length > 0 ? candidateRoutePlan.spots : mockSpots;
+export async function getRecommendationResult(input: RecommendationInput, userSpots: UserZaturiSpot[] = []): Promise<RecommendationResult> {
+  const candidates = getCandidateSpots(userSpots);
+  const candidateRoutePlan = await getKakaoCandidateRoutePlan(input, candidates);
+  const candidateSpots = candidateRoutePlan.spots && candidateRoutePlan.spots.length > 0 ? candidateRoutePlan.spots : candidates;
   latestCandidateSpots = candidateSpots;
   const assessmentsBySpot = new Map(candidateRoutePlan.assessments.map((assessment) => [assessment.spotId, assessment]));
 
@@ -130,6 +132,11 @@ export async function getRecommendationResult(input: RecommendationInput): Promi
   };
 }
 
-export function getSpotById(id: string) {
-  return latestCandidateSpots.find((spot) => spot.id === id) ?? mockSpots.find((spot) => spot.id === id);
+export function getSpotById(id: string, userSpots: UserZaturiSpot[] = [], savedSpotSnapshots: SavedSpotSnapshot[] = []) {
+  return (
+    latestCandidateSpots.find((spot) => spot.id === id) ??
+    savedSpotSnapshots.find((spot) => spot.id === id) ??
+    getCandidateSpots(userSpots).find((spot) => spot.id === id) ??
+    mockSpots.find((spot) => spot.id === id)
+  );
 }

@@ -1,5 +1,7 @@
 appId: com.zaturi.app
 ---
+- clearState
 - launchApp
-- assertVisible: "자투리여행"
-- assertVisible: "추천 보기"
+- assertVisible: "틈새 탐색"
+- assertVisible: "틈새 탐색 시작"
+- assertVisible: "자투리 저장소"

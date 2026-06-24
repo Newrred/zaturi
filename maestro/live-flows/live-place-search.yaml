@@ -1,0 +1,29 @@
+appId: com.zaturi.app
+---
+- clearState
+- launchApp
+- assertVisible: "틈새 탐색"
+- tapOn: "틈새 탐색 시작"
+- assertVisible: "근처 자투리 탐색"
+- tapOn: "근처 자투리 탐색"
+- assertVisible: "지금 어디에 있나요?"
+- tapOn: "강릉역, 속초 숙소"
+# Maestro 2.5.1 cannot input Korean text on Android. This ASCII query still hits live TourAPI data.
+- inputText: "P.E.I"
+- hideKeyboard
+- tapOn: "검색"
+- extendedWaitUntil:
+    visible: "P.E.I coffee"
+    timeout: 30000
+- tapOn:
+    text: "선택"
+    index: 0
+- assertVisible: "좌표 확정됨"
+- tapOn: "다음"
+- assertVisible: "남는 자투리 시간은 얼마나 될까요?"
+- tapOn: "다음"
+- assertVisible: "어떤 틈새 여정이 좋을까요?"
+- tapOn: "틈새 여정 시작하기"
+- extendedWaitUntil:
+    visible: "지금 남는 시간으로 가능한 경험"
+    timeout: 30000

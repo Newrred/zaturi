@@ -24,6 +24,9 @@ class ZaturiKakaoMapModule : Module() {
       Prop("subtitle") { view: ZaturiKakaoMapView, subtitle: String? ->
         view.setSubtitle(subtitle)
       }
+      Prop("markersJson") { view: ZaturiKakaoMapView, markersJson: String? ->
+        view.setMarkersJson(markersJson)
+      }
       Prop("zoomLevel") { view: ZaturiKakaoMapView, zoomLevel: Int? ->
         view.setZoomLevel(zoomLevel ?: 15)
       }
